@@ -1,6 +1,21 @@
-# 成都金融城双塔 · 两种程序化 3D 创作
+# 成都金融城双塔 · 程序化图像实验
 
-用同一个建筑主题比较 Codex 和 AGY 的程序化建模、渲染与后期。这是 2026 年 11 月 24 日的静态图项目归档，供继续学习和迭代。
+用成都金融城双塔比较 Codex 和 AGY 的二维绘画与三维渲染。两轮实验各自保留源码、复现说明和原始输出。
+
+## 2026 年 11 月 25 日 · 二维绘画
+
+![Codex 三版与 AGY 四版二维实验预览](previews/2026-11-25-2d-comparison.jpg)
+
+| 项目 | 方法 | 成图和源码 |
+| --- | --- | --- |
+| **Codex** · C# / System.Drawing | 首版按建筑资料画街景；航拍版目测参考照重画构图；笔触版从照片读取色彩与边缘，保留能降低色差的笔触。 | [街景](codex-2d/Chengdu-Dusk.png) · [航拍对照](codex-2d/aerial-study/Chengdu-Aerial.png) · [笔触重绘](codex-2d/stroke-study/Chengdu-Brushes.png) · [源码与说明](codex-2d/) · [项目总结](codex-2d/Chengdu-Dusk-Project-Review.md) |
+| **AGY** · Python / NumPy / Pillow / SciPy | 用二维构图、透视线和程序规则绘制城市。v4 用多毛笔刷分层画天空、楼宇和街景，再做泛光和调色。 | [v1](agy-2d/output/chengdu_twin_towers_dusk.png) · [v2](agy-2d/output/chengdu_twin_towers_dusk_v2.png) · [v3](agy-2d/output/chengdu_twin_towers_dusk_v3.png) · [v4](agy-2d/output/chengdu_twin_towers_dusk_v4.png) · [源码与说明](agy-2d/) |
+
+Codex 笔触版的拟合目标是一张 1200 × 800 的实拍航拍照。画笔参数保存在仓库里，离线可以重放。原始参考照片由 ANTARA 刊载，仓库保留来源链接。[参考来源与笔触复现](codex-2d/stroke-study/README.md)
+
+AGY v4 用程序决定楼形、窗灯、天空与道路的颜色和位置。两边的参考输入、构图和机位不同。要比较两套方法，需要固定参考、机位和素材条件。
+
+## 2026 年 11 月 24 日 · 三维渲染
 
 | 项目 | 创作工具与方法 | 从哪里开始看 |
 | --- | --- | --- |
@@ -22,7 +37,7 @@
 ## 保留原版，继续迭代
 
 - 首次归档锁定在 Git 标签 [`baseline-2026-11-24`](https://github.com/liweimin/chengdu-twin-towers-3d/tree/baseline-2026-11-24)。以后即使主分支上的代码更新，仍能用该标签找到这两份原始源码和输出。
-- 延续两个目录名来标明项目归属。修改哪一套，就在对应目录提交源码；跨项目对比可以分别提交，便于查看各自变化。
+- 按 Agent 和技术路线保留目录。Codex 在 `codex-webgl/` 或 `codex-2d/` 继续，AGY 在 `agy-mitsuba/` 或 `agy-2d/` 继续。分别提交各项目的改动，便于比较。
 - 新作品用带用途或版本的文件名，例如 `codex-webgl/outputs/camera-slide-v1.mp4` 或 `agy-mitsuba/outputs/camera-slide-v1.mp4`。把运行命令、相机或渲染参数及对应输出写进项目说明，方便回看和复现。
 - 继续学习时可以先复用其中一个场景做 5 秒镜头。Codex 版可以延续 WebGL 相机和网页预览。AGY 版可以用 Mitsuba 逐帧渲染，也可以把已有网格和贴图整理成网页可加载的资产，再做交互相机和材质适配。
 
