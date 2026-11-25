@@ -2,6 +2,12 @@
 
 用实际作品比较 Codex 和 AGY 的二维绘画、三维渲染和视频动效。每轮实验保留源码、复现说明和原始输出。
 
+## 2026 年 11 月 25 日 · 南京折叠纸地图动画
+
+Codex 用 Three.js 制作 55 秒竖屏短片。南京地标在同一张地图上依次立起，镜头沿路线移动，最后拉升至烟花夜景。
+
+[成片 MP4](nanjing-paper-map/outputs/Nanjing.mp4) · [源码、素材与复现说明](nanjing-paper-map/README.md) · [最初的提示词](nanjing-paper-map/PROMPT.md)
+
 ## 2026 年 11 月 25 日 · ChatGPT 四周年动效视频
 
 同一条提示词分别交给 Codex 和 AGY。Codex 用 Python 绘制中文时间线，AGY 用网页 Canvas 绘制英文动效。两版都按音乐节拍逐帧作画，导出为 1080p MP4。

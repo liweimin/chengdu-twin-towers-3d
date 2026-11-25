@@ -1,0 +1,56 @@
+[
+  {
+    "id": "center",
+    "zh": "新街口",
+    "en": "Xinjiekou",
+    "lon": 118.77875,
+    "lat": 32.0435,
+    "visit": 7.2,
+    "number": "01"
+  },
+  {
+    "id": "gate",
+    "zh": "中华门",
+    "en": "Zhonghua Gate",
+    "lon": 118.7764861,
+    "lat": 32.0146861,
+    "visit": 9.4,
+    "number": "02"
+  },
+  {
+    "id": "temple",
+    "zh": "夫子庙 · 秦淮河",
+    "en": "Confucius Temple · Qinhuai River",
+    "lon": 118.783786,
+    "lat": 32.022579,
+    "visit": 15.2,
+    "number": "03"
+  },
+  {
+    "id": "mausoleum",
+    "zh": "中山陵",
+    "en": "Sun Yat-sen Mausoleum",
+    "lon": 118.8483,
+    "lat": 32.0643,
+    "visit": 24.6,
+    "number": "04"
+  },
+  {
+    "id": "lake",
+    "zh": "玄武湖",
+    "en": "Xuanwu Lake",
+    "lon": 118.79833,
+    "lat": 32.07306,
+    "visit": 34.0,
+    "number": "05"
+  },
+  {
+    "id": "tower",
+    "zh": "紫峰大厦",
+    "en": "Zifeng Tower",
+    "lon": 118.77806,
+    "lat": 32.06247,
+    "visit": 41.0,
+    "number": "06"
+  }
+]

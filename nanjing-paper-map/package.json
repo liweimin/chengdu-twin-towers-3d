@@ -1,0 +1,15 @@
+{
+  "dependencies": {
+    "@mapbox/vector-tile": "^3.0.0",
+    "pbf": "^5.2.0",
+    "playwright-core": "^1.65.1",
+    "three": "^0.180.0"
+  },
+  "name": "nanjing-film",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "render": "node render.mjs video",
+    "stills": "node render.mjs stills"
+  }
+}
