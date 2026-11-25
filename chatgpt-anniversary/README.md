@@ -22,9 +22,10 @@
 
 ```powershell
 npm ci
-node generate_audio.js
 node render.js
 ```
+
+以上命令使用归档中随附的 soundtrack.wav。我复跑了 generate_audio.js，生成的文件仍为 50 秒、128 BPM，但波形与交付音轨有差异。抽样比较确认，随附 WAV 与原成片中的配乐吻合。需要研究合成时，可以在另一个工作副本执行 node generate_audio.js。
 
 ## 史料说明
 
