@@ -1,0 +1,1625 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>ChatGPT 4th Anniversary — Unofficial Kinetic Tribute</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 1920px; height: 1080px; overflow: hidden; background: #070910; }
+  canvas { display: block; width: 1920px; height: 1080px; }
+</style>
+</head>
+<body>
+<canvas id="c" width="1920" height="1080"></canvas>
+<script>
+(() => {
+  const W = 1920, H = 1080;
+  const BPM = 128;
+  const BEAT = 60 / BPM; // 0.46875s
+  const BAR = BEAT * 4;  // 1.875s
+  const DURATION = 50.0;
+
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d', { alpha: false });
+
+  // Pre-bake subtle organic film grain tile (OpenAI 2025-2026 tactile print/gradient feel)
+  const grainCanvas = document.createElement('canvas');
+  grainCanvas.width = 256;
+  grainCanvas.height = 256;
+  const gctx = grainCanvas.getContext('2d');
+  const gImg = gctx.createImageData(256, 256);
+  let gSeed = 424242;
+  for (let i = 0; i < gImg.data.length; i += 4) {
+    gSeed = (gSeed * 1664525 + 1013904223) >>> 0;
+    const v = (gSeed >>> 24);
+    gImg.data[i] = v;
+    gImg.data[i + 1] = v;
+    gImg.data[i + 2] = v;
+    gImg.data[i + 3] = 16;
+  }
+  gctx.putImageData(gImg, 0, 0);
+  const grainPattern = ctx.createPattern(grainCanvas, 'repeat');
+
+  // Deterministic PRNG for stars/particles
+  function seeded(n) {
+    const x = Math.sin(n * 127.1 + 311.7) * 43758.5453123;
+    return x - Math.floor(x);
+  }
+
+  // Easing functions
+  const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const easeOutExpo = t => t >= 1 ? 1 : 1 - Math.pow(2, -10 * clamp(t));
+  const easeOutCubic = t => 1 - Math.pow(1 - clamp(t), 3);
+  const easeInOutCubic = t => {
+    t = clamp(t);
+    return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+  };
+  const easeOutBack = t => {
+    t = clamp(t);
+    const c1 = 1.70158, c3 = c1 + 1;
+    return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
+  };
+  const prog = (t, start, dur) => clamp((t - start) / dur, 0, 1);
+
+  // Beat / Groove helpers synced to 128 BPM audio
+  function beatPulse(t) {
+    if (t < 2 * BAR || t > 23.2 * BAR) return 0;
+    const ph = (t / BEAT) % 1;
+    return Math.exp(-ph * 7.5);
+  }
+  function halfBeatPulse(t) {
+    if (t < 2 * BAR || t > 23.2 * BAR) return 0;
+    const ph = (t / (BEAT * 0.5)) % 1;
+    return Math.exp(-ph * 8.0);
+  }
+  function snarePulse(t) {
+    if (t < 2 * BAR || t > 23.0 * BAR) return 0;
+    const b = (t / BEAT) % 4;
+    if (b >= 1 && b < 2) return Math.exp(-(b - 1) * 9);
+    if (b >= 3 && b < 4) return Math.exp(-(b - 3) * 9);
+    return 0;
+  }
+
+  // Fonts
+  const SANS = '"Segoe UI", "Bahnschrift", "Helvetica Neue", Arial, sans-serif';
+  const MONO = '"Consolas", "Courier New", monospace';
+
+  // Drawing primitives
+  function roundRect(x, y, w, h, r) {
+    const rad = Math.min(r, w / 2, h / 2);
+    ctx.beginPath();
+    ctx.moveTo(x + rad, y);
+    ctx.arcTo(x + w, y, x + w, y + h, rad);
+    ctx.arcTo(x + w, y + h, x, y + h, rad);
+    ctx.arcTo(x, y + h, x, y, rad);
+    ctx.arcTo(x, y, x + w, y, rad);
+    ctx.closePath();
+  }
+
+  function drawPill(x, y, text, opts = {}) {
+    const {
+      bg = 'rgba(0,0,0,0.06)',
+      fg = '#0A0B0E',
+      border = null,
+      fontSize = 20,
+      font = SANS,
+      weight = 600,
+      padX = 22,
+      padY = 11,
+      align = 'left',
+      dotColor = null,
+      alpha = 1
+    } = opts;
+    ctx.save();
+    ctx.globalAlpha *= alpha;
+    ctx.font = `${weight} ${fontSize}px ${font}`;
+    const tw = ctx.measureText(text).width;
+    const dotW = dotColor ? 18 : 0;
+    const w = tw + padX * 2 + dotW;
+    const h = fontSize + padY * 2;
+    const rx = align === 'center' ? x - w / 2 : align === 'right' ? x - w : x;
+    const ry = y - h / 2;
+    roundRect(rx, ry, w, h, h / 2);
+    ctx.fillStyle = bg;
+    ctx.fill();
+    if (border) {
+      ctx.strokeStyle = border;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+    if (dotColor) {
+      ctx.beginPath();
+      ctx.arc(rx + padX + 5, y, 5, 0, Math.PI * 2);
+      ctx.fillStyle = dotColor;
+      ctx.fill();
+    }
+    ctx.fillStyle = fg;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, rx + padX + dotW, y + 1);
+    ctx.restore();
+    return { w, h };
+  }
+
+  function drawCard(x, y, w, h, r, opts = {}) {
+    const {
+      bg = '#FFFFFF',
+      border = null,
+      shadow = 'rgba(10,12,20,0.08)',
+      shadowBlur = 40,
+      shadowY = 16,
+      alpha = 1
+    } = opts;
+    ctx.save();
+    ctx.globalAlpha *= alpha;
+    if (shadow) {
+      ctx.shadowColor = shadow;
+      ctx.shadowBlur = shadowBlur;
+      ctx.shadowOffsetY = shadowY;
+    }
+    roundRect(x, y, w, h, r);
+    ctx.fillStyle = bg;
+    ctx.fill();
+    ctx.shadowColor = 'transparent';
+    if (border) {
+      ctx.strokeStyle = border;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function drawClippedText(text, x, y, p, opts = {}) {
+    const {
+      fontSize = 96,
+      weight = 800,
+      color = '#0A0B0E',
+      align = 'left',
+      font = SANS,
+      offsetY = 65
+    } = opts;
+    const e = easeOutExpo(p);
+    ctx.save();
+    ctx.font = `${weight} ${fontSize}px ${font}`;
+    ctx.textAlign = align;
+    ctx.textBaseline = 'alphabetic';
+    ctx.beginPath();
+    ctx.rect(0, y - fontSize * 1.15, W, fontSize * 1.45);
+    ctx.clip();
+    ctx.fillStyle = color;
+    ctx.globalAlpha *= clamp(p * 2.5);
+    ctx.fillText(text, x, y + (1 - e) * offsetY);
+    ctx.restore();
+  }
+
+  function drawMeshGradient(blobs, baseColor = '#FAFAF8', grainAlpha = 0.45) {
+    ctx.fillStyle = baseColor;
+    ctx.fillRect(0, 0, W, H);
+    for (const b of blobs) {
+      const g = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, b.r);
+      g.addColorStop(0, b.c0);
+      g.addColorStop(0.55, b.c1 || 'rgba(255,255,255,0)');
+      g.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, W, H);
+    }
+    if (grainAlpha > 0) {
+      ctx.save();
+      ctx.globalAlpha = grainAlpha;
+      ctx.fillStyle = grainPattern;
+      ctx.fillRect(0, 0, W, H);
+      ctx.restore();
+    }
+  }
+
+  function drawEditorialGrid(dark = false, alpha = 0.06) {
+    ctx.save();
+    ctx.strokeStyle = dark ? `rgba(255,255,255,${alpha})` : `rgba(10,12,18,${alpha})`;
+    ctx.lineWidth = 1;
+    const cols = 12;
+    const margin = 96;
+    const cw = (W - margin * 2) / cols;
+    for (let i = 0; i <= cols; i++) {
+      const x = Math.round(margin + i * cw) + 0.5;
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, H);
+      ctx.stroke();
+    }
+    for (let y = 120; y < H; y += 120) {
+      ctx.beginPath();
+      ctx.moveTo(0, y + 0.5);
+      ctx.lineTo(W, y + 0.5);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function drawStarfield(t, count = 180, speed = 28) {
+    ctx.save();
+    for (let i = 0; i < count; i++) {
+      const sx = (seeded(i * 3.1) * W + t * speed * (0.2 + seeded(i * 7.7))) % W;
+      const sy = seeded(i * 5.3) * H;
+      const r = 0.8 + seeded(i * 11.1) * 2.1;
+      const tw = 0.35 + 0.65 * Math.sin(t * (2 + seeded(i * 2.3) * 4) + i);
+      ctx.fillStyle = `rgba(255,248,235,${tw * 0.75})`;
+      ctx.beginPath();
+      ctx.arc(sx, sy, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  // Stylized abstract geometric tribute rosette (inspired by, not a trademark copy of official logo)
+  function drawTributeEmblem(cx, cy, radius, rot, color = '#0A0B0E', lineWidth = 2.5) {
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(rot);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = lineWidth;
+    for (let i = 0; i < 6; i++) {
+      ctx.save();
+      ctx.rotate((i * Math.PI) / 3);
+      ctx.beginPath();
+      ctx.ellipse(radius * 0.34, 0, radius * 0.44, radius * 0.24, Math.PI / 6, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+
+  // =========================================================================
+  // SCENE 1 (0.00s - 3.75s): THE PROMPT THAT CHANGED EVERYTHING
+  // =========================================================================
+  function renderScene1(t) {
+    const p = t / (2 * BAR);
+    const launch = prog(t, 3.25, 0.5);
+    const zoom = 1 + easeInOutCubic(launch) * 0.16;
+
+    ctx.save();
+    ctx.translate(W / 2, H / 2);
+    ctx.scale(zoom, zoom);
+    ctx.translate(-W / 2, -H / 2);
+
+    // Warm crisp alabaster canvas with soft OpenAI-inspired pastel washes
+    drawMeshGradient([
+      { x: 320 + Math.sin(t) * 60, y: 240, r: 720, c0: 'rgba(255,196,163,0.28)' },
+      { x: 1620, y: 860 - Math.cos(t) * 50, r: 760, c0: 'rgba(134,239,172,0.22)' },
+      { x: 960, y: 540, r: 620, c0: 'rgba(56,189,248,0.12)' }
+    ], '#FAFAF8', 0.45);
+    drawEditorialGrid(false, 0.045);
+
+    // Floating faint kinetic background rings
+    ctx.save();
+    ctx.strokeStyle = 'rgba(10,12,18,0.05)';
+    ctx.lineWidth = 1.5;
+    for (let i = 0; i < 3; i++) {
+      ctx.beginPath();
+      ctx.arc(W / 2, H / 2 + 20, 260 + i * 130 + Math.sin(t * 2 + i) * 12, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // Top Unofficial Tribute Badge
+    const badgeP = easeOutExpo(prog(t, 0.1, 0.55));
+    drawPill(W / 2, 235 + (1 - badgeP) * 24, 'AN UNOFFICIAL 4TH ANNIVERSARY TRIBUTE  ·  2022–2026', {
+      align: 'center',
+      bg: '#0A0B0E',
+      fg: '#FFFFFF',
+      font: MONO,
+      fontSize: 18,
+      padX: 26,
+      padY: 12,
+      dotColor: '#38BDF8',
+      alpha: badgeP
+    });
+
+    // Editorial Hero Question (direct nod to openai.com homepage hero!)
+    drawClippedText('Four years ago, one prompt', W / 2, 375, prog(t, 0.25, 0.65), {
+      fontSize: 78, weight: 700, color: '#0A0B0E', align: 'center', offsetY: 50
+    });
+    drawClippedText('changed everything.', W / 2, 462, prog(t, 0.45, 0.65), {
+      fontSize: 78, weight: 700, color: '#0A0B0E', align: 'center', offsetY: 50
+    });
+
+    // Central ChatGPT Prompt Box
+    const boxP = easeOutBack(prog(t, 0.35, 0.7));
+    const bx = W / 2 - 480, by = 535 + (1 - boxP) * 40, bw = 960, bh = 124;
+    drawCard(bx, by, bw, bh, 34, {
+      bg: '#FFFFFF',
+      border: 'rgba(10,12,18,0.08)',
+      shadow: 'rgba(14,165,233,0.16)',
+      shadowBlur: 55,
+      shadowY: 22,
+      alpha: clamp(boxP)
+    });
+
+    // Typed text synced to keystroke clicks!
+    const fullStr = 'Nov 30, 2022 — Launch ChatGPT. Show us the next 4 years.';
+    const typedCount = Math.floor(clamp((t - 0.25) / 2.95) * fullStr.length);
+    const typed = fullStr.slice(0, typedCount);
+
+    ctx.save();
+    ctx.font = `500 30px ${SANS}`;
+    ctx.fillStyle = '#0A0B0E';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(typed, bx + 42, by + bh / 2);
+
+    // Blinking cursor
+    const tw = ctx.measureText(typed).width;
+    if (Math.floor(t * 7) % 2 === 0 || typedCount < fullStr.length) {
+      ctx.fillStyle = '#0EA5E9';
+      ctx.fillRect(bx + 44 + tw + 4, by + bh / 2 - 20, 3.5, 40);
+    }
+
+    // Circular Submit Button (presses down right before drop at 3.5s)
+    const pressed = t > 3.35 ? 0.86 : 1.0;
+    const btnX = bx + bw - 54, btnY = by + bh / 2;
+    ctx.save();
+    ctx.translate(btnX, btnY);
+    ctx.scale(pressed, pressed);
+    ctx.beginPath();
+    ctx.arc(0, 0, 30, 0, Math.PI * 2);
+    ctx.fillStyle = t > 3.2 ? '#0EA5E9' : '#0A0B0E';
+    ctx.fill();
+    // Up arrow
+    ctx.strokeStyle = '#FFFFFF';
+    ctx.lineWidth = 3.5;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.moveTo(0, 11); ctx.lineTo(0, -11);
+    ctx.moveTo(-9, -2); ctx.lineTo(0, -11); ctx.lineTo(9, -2);
+    ctx.stroke();
+    ctx.restore();
+    ctx.restore();
+
+    // Quick-action chips below prompt box (matching openai.com hero chips!)
+    const chips = ['GPT-3.5', 'GPT-4', 'GPT-4o', 'o1 · o3', 'GPT-5', 'GPT-6'];
+    const chipStartX = W / 2 - 395;
+    chips.forEach((label, idx) => {
+      const cp = easeOutExpo(prog(t, 0.9 + idx * 0.14, 0.45));
+      drawPill(chipStartX + idx * 158, 725 + (1 - cp) * 20, label, {
+        align: 'center',
+        bg: 'rgba(10,12,18,0.05)',
+        border: 'rgba(10,12,18,0.08)',
+        fg: '#2B2E36',
+        fontSize: 19,
+        padX: 22,
+        padY: 10,
+        alpha: cp
+      });
+    });
+
+    // Radial shockwave burst right at drop (3.40s -> 3.75s)
+    if (t > 3.38) {
+      const sp = easeOutExpo(prog(t, 3.38, 0.37));
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(btnX, btnY, sp * 2400, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(10,11,16,${sp * 0.92})`;
+      ctx.fill();
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+
+  // =========================================================================
+  // SCENE 2 (3.75s - 7.50s): 2022.11.30 — THE SPARK & FASTEST APP IN HISTORY
+  // =========================================================================
+  function renderScene2(t) {
+    const lt = t - 2 * BAR; // 0 to 3.75s
+    const bp = beatPulse(t);
+    const phase2 = lt >= BAR; // 1.875s split
+
+    // Rich Coral-Tangerine-Sage OpenAI Mesh Gradient
+    drawMeshGradient([
+      { x: 400 + Math.sin(t * 1.5) * 140, y: 300, r: 950, c0: 'rgba(255,112,135,0.42)', c1: 'rgba(251,146,60,0.18)' },
+      { x: 1550, y: 780 + Math.cos(t * 1.8) * 100, r: 900, c0: 'rgba(134,239,172,0.38)', c1: 'rgba(56,189,248,0.12)' },
+      { x: 960, y: 540, r: 700, c0: `rgba(255,255,255,${0.35 + bp * 0.15})` }
+    ], '#FAF8F5', 0.55);
+    drawEditorialGrid(false, 0.05);
+
+    if (!phase2) {
+      // Sub-scene 2A (3.75s - 5.625s): Nov 30, 2022 · 1M Users in 5 Days
+      const p1 = easeOutExpo(prog(lt, 0, 0.45));
+      const p2 = easeOutExpo(prog(lt, BEAT * 2, 0.45));
+
+      // Left Editorial Card: Date & Launch
+      drawCard(96, 175, 820, 720, 32, {
+        bg: '#0A0B0E',
+        shadow: 'rgba(10,12,20,0.22)',
+        shadowBlur: 60,
+        alpha: p1
+      });
+      drawPill(148, 245, 'CHAPTER 01  ·  THE SPARK', {
+        bg: 'rgba(255,255,255,0.12)', fg: '#FFFFFF', font: MONO, fontSize: 18, dotColor: '#FB923C'
+      });
+      drawClippedText('2022', 148, 465, prog(lt, 0.05, 0.5), {
+        fontSize: 196, weight: 800, color: '#FFFFFF'
+      });
+      drawClippedText('NOV 30', 154, 565, prog(lt, 0.16, 0.5), {
+        fontSize: 78, weight: 700, color: '#FDBA74'
+      });
+
+      ctx.save();
+      ctx.font = `500 30px ${SANS}`;
+      ctx.fillStyle = 'rgba(255,255,255,0.78)';
+      ctx.fillText('ChatGPT launches as a free', 154, 660);
+      ctx.fillText('GPT-3.5 research preview.', 154, 704);
+      ctx.restore();
+
+      drawPill(154, 800, 'GPT-3.5 ARCHITECTURE', {
+        bg: 'rgba(251,146,60,0.18)', border: 'rgba(251,146,60,0.45)', fg: '#FED7AA', font: MONO, fontSize: 18
+      });
+
+      // Right Giant Stat Card: 1,000,000 Users in 5 Days
+      const cardReveal = prog(lt, BEAT * 0.75, 0.42);
+      const scalePop = 0.92 + 0.08 * easeOutBack(cardReveal) + bp * 0.025;
+      ctx.save();
+      ctx.globalAlpha = clamp(cardReveal * 1.8);
+      ctx.translate(1390, 535);
+      ctx.scale(scalePop, scalePop);
+      ctx.translate(-1390, -535);
+      drawCard(956, 175, 868, 720, 32, {
+        bg: 'rgba(255,255,255,0.92)',
+        border: 'rgba(10,12,18,0.06)',
+        alpha: 1
+      });
+
+      const countVal = Math.floor(lerp(120000, 1000000, easeOutExpo(prog(lt, BEAT * 0.8, 0.75))));
+      ctx.font = `800 132px ${SANS}`;
+      ctx.fillStyle = '#0A0B0E';
+      ctx.textAlign = 'center';
+      ctx.fillText(countVal.toLocaleString('en-US'), 1390, 480);
+
+      ctx.font = `700 44px ${SANS}`;
+      ctx.fillStyle = '#EA580C';
+      ctx.fillText('USERS IN JUST 5 DAYS', 1390, 560);
+
+      // 5-day progress blocks
+      for (let d = 0; d < 5; d++) {
+        const dp = easeOutExpo(prog(lt, BEAT * 0.9 + d * 0.08, 0.25));
+        const bx = 1090 + d * 124;
+        ctx.save();
+        ctx.globalAlpha *= dp;
+        drawCard(bx, 635, 104, 140, 18, {
+          bg: d === 4 ? '#EA580C' : '#F3F4F6',
+          shadow: null,
+          alpha: 1
+        });
+        ctx.fillStyle = d === 4 ? '#FFFFFF' : '#0A0B0E';
+        ctx.font = `700 22px ${MONO}`;
+        ctx.textAlign = 'center';
+        ctx.fillText(`DAY ${d + 1}`, bx + 52, 695);
+        ctx.font = `600 18px ${SANS}`;
+        ctx.fillStyle = d === 4 ? '#FFEDD5' : '#6B7280';
+        ctx.fillText(d === 4 ? '1M!' : `${(d + 1) * 200}K`, bx + 52, 735);
+        ctx.restore();
+      }
+      ctx.restore();
+    } else {
+      // Sub-scene 2B (5.625s - 7.50s): 100M MONTHLY USERS IN 2 MONTHS + Adoption Curve
+      const st = lt - BAR;
+      const p1 = easeOutExpo(prog(st, 0, 0.45));
+
+      // Top Big Metric
+      drawPill(96, 178, 'JANUARY 2023  ·  HISTORIC RECORD', {
+        bg: '#0A0B0E', fg: '#FFFFFF', font: MONO, fontSize: 19, dotColor: '#34D399'
+      });
+
+      const mVal = Math.floor(lerp(1, 100, easeOutExpo(prog(st, 0.05, 0.65))));
+      ctx.save();
+      ctx.translate(96, 395);
+      const pop = 1 + bp * 0.03;
+      ctx.scale(pop, pop);
+      ctx.font = `800 210px ${SANS}`;
+      ctx.fillStyle = '#0A0B0E';
+      ctx.textAlign = 'left';
+      ctx.fillText(`${mVal}M`, 0, 0);
+      ctx.restore();
+
+      drawClippedText('MONTHLY ACTIVE USERS', 680, 315, prog(st, 0.1, 0.45), {
+        fontSize: 64, weight: 800, color: '#0A0B0E'
+      });
+      drawClippedText('IN JUST 2 MONTHS.', 680, 395, prog(st, 0.2, 0.45), {
+        fontSize: 64, weight: 800, color: '#059669'
+      });
+
+      // Full-width Kinetic Comparison Bar Chart Card
+      drawCard(96, 465, 1728, 445, 32, {
+        bg: 'rgba(255,255,255,0.92)',
+        border: 'rgba(10,12,18,0.07)',
+        alpha: p1
+      });
+
+      ctx.font = `700 24px ${MONO}`;
+      ctx.fillStyle = '#6B7280';
+      ctx.textAlign = 'left';
+      ctx.fillText('TIME TO REACH 100 MILLION MONTHLY USERS  (FASTEST CONSUMER APP IN HISTORY)', 150, 528);
+
+      const bars = [
+        { name: 'ChatGPT (2023)', label: '2 MONTHS', val: 1.0, color: '#059669', highlight: true },
+        { name: 'TikTok', label: '9 MONTHS', val: 0.42, color: '#9CA3AF', highlight: false },
+        { name: 'Instagram', label: '30 MONTHS', val: 0.22, color: '#D1D5DB', highlight: false },
+      ];
+      bars.forEach((b, idx) => {
+        const bp2 = easeOutExpo(prog(st, 0.18 + idx * 0.14, 0.55));
+        const y = 580 + idx * 102;
+        ctx.font = `700 28px ${SANS}`;
+        ctx.fillStyle = b.highlight ? '#0A0B0E' : '#4B5563';
+        ctx.textAlign = 'left';
+        ctx.fillText(b.name, 150, y + 36);
+
+        const maxW = 1120;
+        const bw = maxW * b.val * bp2;
+        roundRect(470, y, Math.max(24, bw), 56, 28);
+        ctx.fillStyle = b.color;
+        ctx.fill();
+
+        ctx.font = `800 24px ${MONO}`;
+        ctx.fillStyle = b.highlight ? '#059669' : '#6B7280';
+        ctx.fillText(b.label, 470 + bw + 24, y + 36);
+      });
+    }
+  }
+
+  // =========================================================================
+  // SCENE 3 (7.50s - 11.25s): 2023 — GPT-4 & FIRST DEVDAY (100M WAU)
+  // =========================================================================
+  function renderScene3(t) {
+    const lt = t - 4 * BAR; // 0 to 3.75s
+    const bp = beatPulse(t);
+    const phase2 = lt >= BAR; // 1.875s
+
+    drawMeshGradient([
+      { x: 1580, y: 240, r: 900, c0: 'rgba(167,139,250,0.28)' },
+      { x: 260, y: 840, r: 850, c0: 'rgba(56,189,248,0.25)' }
+    ], '#F8FAFC', 0.48);
+    drawEditorialGrid(false, 0.05);
+
+    if (!phase2) {
+      // 3A: MAR 14, 2023 — GPT-4
+      drawPill(96, 175, 'MARCH 14, 2023  ·  GENERATIONAL LEAP', {
+        bg: '#0A0B0E', fg: '#FFFFFF', font: MONO, fontSize: 19, dotColor: '#818CF8'
+      });
+
+      const zoom = 1 + bp * 0.025;
+      ctx.save();
+      ctx.translate(96, 400);
+      ctx.scale(zoom, zoom);
+      ctx.font = `800 215px ${SANS}`;
+      ctx.fillStyle = '#0A0B0E';
+      ctx.textAlign = 'left';
+      ctx.fillText('GPT-4', 0, 0);
+      ctx.restore();
+
+      drawClippedText('Logic, creativity & complex reasoning.', 760, 345, prog(lt, 0.12, 0.45), {
+        fontSize: 52, weight: 700, color: '#1F2937'
+      });
+      drawClippedText('Plus tier · Enterprise · Multimodal input.', 760, 412, prog(lt, 0.24, 0.45), {
+        fontSize: 36, weight: 500, color: '#6B7280'
+      });
+
+      // 4 Kinetic Bento Capability Cards
+      const cards = [
+        { tag: 'FEB 2023', title: 'ChatGPT Plus', desc: 'First paid tier · $20/mo', accent: '#0EA5E9' },
+        { tag: 'MAR 2023', title: 'GPT-4 Launch', desc: 'Breakthrough reasoning & code', accent: '#6366F1' },
+        { tag: 'AUG 2023', title: 'Enterprise', desc: 'Workplace scale & security', accent: '#10B981' },
+        { tag: '2023', title: 'Vision & Voice', desc: 'See, hear, and speak', accent: '#F59E0B' }
+      ];
+      cards.forEach((c, i) => {
+        const cp = easeOutBack(prog(lt, 0.12 + i * 0.13, 0.45));
+        const cx = 96 + i * 440;
+        const cy = 510 + (1 - cp) * 70;
+        drawCard(cx, cy, 408, 370, 28, {
+          bg: i === 1 ? '#0A0B0E' : '#FFFFFF',
+          border: 'rgba(10,12,18,0.06)',
+          alpha: clamp(cp)
+        });
+        drawPill(cx + 32, cy + 56, c.tag, {
+          bg: i === 1 ? 'rgba(99,102,241,0.22)' : 'rgba(10,12,18,0.05)',
+          fg: i === 1 ? '#C7D2FE' : '#4B5563',
+          font: MONO, fontSize: 16, padX: 16, padY: 8
+        });
+        ctx.font = `800 42px ${SANS}`;
+        ctx.fillStyle = i === 1 ? '#FFFFFF' : '#0A0B0E';
+        ctx.textAlign = 'left';
+        ctx.fillText(c.title, cx + 32, cy + 165);
+
+        ctx.font = `500 24px ${SANS}`;
+        ctx.fillStyle = i === 1 ? 'rgba(255,255,255,0.72)' : '#6B7280';
+        ctx.fillText(c.desc, cx + 32, cy + 225);
+
+        // Accent progress pill at bottom
+        roundRect(cx + 32, cy + 312, 344 * clamp(cp), 12, 6);
+        ctx.fillStyle = c.accent;
+        ctx.fill();
+      });
+    } else {
+      // 3B: NOV 6, 2023 — FIRST DEVDAY · GPT-4 TURBO · CUSTOM GPTs · 100M WAU
+      const st = lt - BAR;
+      drawMeshGradient([
+        { x: 960, y: 540, r: 900, c0: 'rgba(56,189,248,0.26)', c1: 'rgba(99,102,241,0.12)' }
+      ], '#070910', 0.4);
+      drawEditorialGrid(true, 0.06);
+
+      drawPill(96, 175, 'NOVEMBER 6, 2023  ·  FIRST OPENAI DEVDAY', {
+        bg: 'rgba(255,255,255,0.1)', fg: '#FFFFFF', font: MONO, fontSize: 19, dotColor: '#38BDF8'
+      });
+
+      drawClippedText('GPT-4 TURBO', 96, 355, prog(st, 0, 0.45), {
+        fontSize: 138, weight: 800, color: '#FFFFFF'
+      });
+
+      // 3 Highlight Metric Cards
+      const stats = [
+        { num: '128K', label: 'CONTEXT WINDOW', sub: '300+ pages in a single prompt', c: '#38BDF8' },
+        { num: 'GPTs', label: 'CUSTOM MINI-APPS', sub: 'User-built tailored assistants', c: '#A78BFA' },
+        { num: '100M', label: 'WEEKLY ACTIVE USERS', sub: 'One year after launch', c: '#34D399' }
+      ];
+      stats.forEach((s, i) => {
+        const cp = easeOutBack(prog(st, 0.12 + i * 0.16, 0.45));
+        const cx = 96 + i * 586;
+        const cy = 445 + (1 - cp) * 65;
+        drawCard(cx, cy, 554, 430, 30, {
+          bg: 'rgba(255,255,255,0.06)',
+          border: `rgba(255,255,255,${0.12 + (i === 2 ? bp * 0.25 : 0)})`,
+          shadow: null,
+          alpha: clamp(cp)
+        });
+        ctx.font = `800 116px ${SANS}`;
+        ctx.fillStyle = s.c;
+        ctx.textAlign = 'left';
+        ctx.fillText(s.num, cx + 44, cy + 175);
+
+        ctx.font = `700 28px ${MONO}`;
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillText(s.label, cx + 44, cy + 255);
+
+        ctx.font = `500 24px ${SANS}`;
+        ctx.fillStyle = 'rgba(255,255,255,0.65)';
+        ctx.fillText(s.sub, cx + 44, cy + 305);
+      });
+    }
+  }
+
+  // =========================================================================
+  // SCENE 4 (11.25s - 16.875s): 2024 — GPT-4o ("OMNI") + SEARCH / CANVAS / SORA
+  // =========================================================================
+  function renderScene4(t) {
+    const lt = t - 6 * BAR; // 0 to 5.625s (3 bars)
+    const bp = beatPulse(t);
+    const sp = snarePulse(t);
+    const phase2 = lt >= 1.5 * BAR; // 2.8125s
+
+    // Signature OpenAI Sky-Blue / Turquoise Luminous Atmospheric Backdrop
+    drawMeshGradient([
+      { x: 1280, y: 540, r: 820 + bp * 90, c0: 'rgba(56,189,248,0.45)', c1: 'rgba(45,212,191,0.18)' },
+      { x: 340, y: 200, r: 700, c0: 'rgba(14,165,233,0.22)' }
+    ], '#060A12', 0.45);
+    drawEditorialGrid(true, 0.055);
+
+    if (!phase2) {
+      // 4A: MAY 13, 2024 — GPT-4o ("OMNI") with Signature Breathing Voice Orb!
+      drawPill(96, 175, 'MAY 13, 2024  ·  NATIVE MULTIMODALITY', {
+        bg: 'rgba(56,189,248,0.16)', border: 'rgba(56,189,248,0.45)', fg: '#E0F2FE', font: MONO, fontSize: 19, dotColor: '#38BDF8'
+      });
+
+      drawClippedText('GPT-4o', 96, 400, prog(lt, 0.05, 0.45), {
+        fontSize: 200, weight: 800, color: '#FFFFFF'
+      });
+      drawClippedText('OMNI.', 102, 505, prog(lt, 0.2, 0.45), {
+        fontSize: 82, weight: 700, color: '#38BDF8'
+      });
+
+      ctx.save();
+      ctx.font = `500 32px ${SANS}`;
+      ctx.fillStyle = 'rgba(255,255,255,0.8)';
+      ctx.fillText('Real-time text, vision & human-like voice', 102, 585);
+      ctx.fillText('in a single unified neural model.', 102, 632);
+      ctx.restore();
+
+      // Multimodal Pill Chips
+      const modes = ['TEXT', 'VISION', 'REAL-TIME VOICE', '4o-MINI'];
+      modes.forEach((m, i) => {
+        const mp = easeOutExpo(prog(lt, 0.35 + i * 0.12, 0.35));
+        drawPill(102 + i * 196, 725 + (1 - mp) * 20, m, {
+          bg: i === 2 ? '#38BDF8' : 'rgba(255,255,255,0.1)',
+          fg: i === 2 ? '#060A12' : '#FFFFFF',
+          font: MONO, fontSize: 18, padX: 20, padY: 11, alpha: mp
+        });
+      });
+
+      // Right Centerpiece: OpenAI Signature Living Sky-Blue Voice Orb!
+      const ox = 1360, oy = 540;
+      const orbR = 220 + bp * 38 + Math.sin(t * 5) * 10;
+
+      // Concentric audio-reactive waveform rings
+      for (let r = 0; r < 5; r++) {
+        ctx.save();
+        ctx.beginPath();
+        const baseR = orbR + 34 + r * 44;
+        for (let a = 0; a <= 72; a++) {
+          const ang = (a / 72) * Math.PI * 2;
+          const wave = Math.sin(ang * 6 + t * 8 + r) * (8 + bp * 16 + sp * 12);
+          const rx = ox + Math.cos(ang) * (baseR + wave);
+          const ry = oy + Math.sin(ang) * (baseR + wave);
+          if (a === 0) ctx.moveTo(rx, ry);
+          else ctx.lineTo(rx, ry);
+        }
+        ctx.closePath();
+        ctx.strokeStyle = `rgba(56,189,248,${0.42 - r * 0.075})`;
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // Luminous Layered Orb Shader
+      const og = ctx.createRadialGradient(ox - 55, oy - 55, 18, ox, oy, orbR);
+      og.addColorStop(0, '#FFFFFF');
+      og.addColorStop(0.28, '#BAE6FD');
+      og.addColorStop(0.62, '#38BDF8');
+      og.addColorStop(0.88, '#0284C7');
+      og.addColorStop(1, 'rgba(2,132,199,0)');
+      ctx.beginPath();
+      ctx.arc(ox, oy, orbR, 0, Math.PI * 2);
+      ctx.fillStyle = og;
+      ctx.fill();
+
+      // Inner swirling cloud highlight
+      const og2 = ctx.createRadialGradient(
+        ox + Math.cos(t * 2.5) * 55,
+        oy + Math.sin(t * 2.5) * 55,
+        10,
+        ox, oy, orbR * 0.82
+      );
+      og2.addColorStop(0, 'rgba(255,255,255,0.72)');
+      og2.addColorStop(0.5, 'rgba(45,212,191,0.35)');
+      og2.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.beginPath();
+      ctx.arc(ox, oy, orbR * 0.85, 0, Math.PI * 2);
+      ctx.fillStyle = og2;
+      ctx.fill();
+    } else {
+      // 4B: LATE 2024 — 200M → 300M WAU + SEARCH · CANVAS · SORA
+      const st = lt - 1.5 * BAR;
+      drawPill(96, 175, 'AUG – DEC 2024  ·  THE PLATFORM EXPANDS', {
+        bg: 'rgba(255,255,255,0.1)', fg: '#FFFFFF', font: MONO, fontSize: 19, dotColor: '#2DD4BF'
+      });
+
+      // Top growth banner: 200M -> 300M WAU
+      const wau = Math.floor(lerp(200, 300, easeOutExpo(prog(st, 0.1, 0.9))));
+      ctx.font = `800 132px ${SANS}`;
+      ctx.fillStyle = '#FFFFFF';
+      ctx.textAlign = 'left';
+      ctx.fillText(`${wau}M`, 96, 345);
+      ctx.font = `700 44px ${SANS}`;
+      ctx.fillStyle = '#2DD4BF';
+      ctx.fillText('WEEKLY ACTIVE USERS BY DEC 2024', 475, 315);
+      ctx.font = `500 26px ${MONO}`;
+      ctx.fillStyle = 'rgba(255,255,255,0.6)';
+      ctx.fillText('200M (AUG 2024)  →  300M (DEC 2024)', 475, 360);
+
+      // 3 Vibrant Bento Cards: Search, Canvas, Sora
+      const items = [
+        { tag: 'OCT 2024', title: 'ChatGPT Search', desc: 'Real-time web answers & citations', g0: '#0EA5E9', g1: '#2DD4BF' },
+        { tag: 'OCT 2024', title: 'Canvas', desc: 'Side-by-side writing & coding workspace', g0: '#8B5CF6', g1: '#EC4899' },
+        { tag: 'DEC 2024', title: 'Sora', desc: 'Text-to-video generation goes live', g0: '#F97316', g1: '#FACC15' }
+      ];
+      items.forEach((it, i) => {
+        const cp = easeOutBack(prog(st, 0.12 + i * 0.18, 0.45));
+        const cx = 96 + i * 586;
+        const cy = 430 + (1 - cp) * 70;
+        drawCard(cx, cy, 554, 445, 32, {
+          bg: 'rgba(255,255,255,0.06)',
+          border: 'rgba(255,255,255,0.14)',
+          shadow: null,
+          alpha: clamp(cp)
+        });
+        // Mini gradient artwork header inside card (OpenAI news-card style!)
+        const hg = ctx.createLinearGradient(cx + 24, cy + 24, cx + 530, cy + 220);
+        hg.addColorStop(0, it.g0);
+        hg.addColorStop(1, it.g1);
+        roundRect(cx + 24, cy + 24, 506, 200, 22);
+        ctx.fillStyle = hg;
+        ctx.fill();
+        ctx.save();
+        ctx.globalAlpha = 0.28;
+        ctx.fillStyle = grainPattern;
+        ctx.fill();
+        ctx.restore();
+
+        drawPill(cx + 46, cy + 68, it.tag, {
+          bg: 'rgba(0,0,0,0.42)', fg: '#FFFFFF', font: MONO, fontSize: 16, padX: 16, padY: 8
+        });
+
+        ctx.font = `800 48px ${SANS}`;
+        ctx.fillStyle = '#FFFFFF';
+        ctx.textAlign = 'left';
+        ctx.fillText(it.title, cx + 32, cy + 305);
+
+        ctx.font = `500 25px ${SANS}`;
+        ctx.fillStyle = 'rgba(255,255,255,0.72)';
+        ctx.fillText(it.desc, cx + 32, cy + 358);
+      });
+    }
+  }
+
+  // =========================================================================
+  // SCENE 5 (16.875s - 22.50s): THE REASONING REVOLUTION (o1 → o3 & 400M WAU)
+  // =========================================================================
+  function renderScene5(t) {
+    const lt = t - 9 * BAR; // 0 to 5.625s (3 bars)
+    const bp = beatPulse(t);
+    const phase2 = lt >= 1.5 * BAR;
+
+    // Electric Indigo-Violet Deep Thinking Backdrop
+    drawMeshGradient([
+      { x: 960, y: 460, r: 960 + bp * 80, c0: 'rgba(99,102,241,0.38)', c1: 'rgba(168,85,247,0.16)' },
+      { x: 1650, y: 850, r: 720, c0: 'rgba(56,189,248,0.22)' }
+    ], '#070814', 0.45);
+    drawEditorialGrid(true, 0.055);
+
+    // Animated Chain-of-Thought Neural Node Graph in background
+    const nodes = [];
+    for (let i = 0; i < 18; i++) {
+      const nx = 140 + (i % 6) * 320 + Math.sin(t * 1.4 + i) * 28;
+      const ny = 220 + Math.floor(i / 6) * 280 + Math.cos(t * 1.2 + i * 2) * 24;
+      nodes.push({ x: nx, y: ny });
+    }
+    const activeNode = Math.floor((t / (BEAT * 0.5)) % nodes.length);
+    ctx.save();
+    for (let i = 0; i < nodes.length - 1; i++) {
+      const a = nodes[i], b = nodes[i + 1];
+      const lit = i === activeNode || i + 1 === activeNode;
+      ctx.strokeStyle = lit ? 'rgba(165,180,252,0.55)' : 'rgba(129,140,248,0.12)';
+      ctx.lineWidth = lit ? 2.5 : 1;
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
+    }
+    nodes.forEach((n, i) => {
+      const lit = i === activeNode;
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, lit ? 9 + bp * 5 : 4, 0, Math.PI * 2);
+      ctx.fillStyle = lit ? '#C7D2FE' : 'rgba(129,140,248,0.35)';
+      ctx.fill();
+    });
+    ctx.restore();
+
+    if (!phase2) {
+      // 5A: SEP 12, 2024 — OpenAI o1 (Thinking Before Answering)
+      drawPill(96, 175, 'SEPTEMBER 12, 2024  ·  NEW PARADIGM', {
+        bg: 'rgba(129,140,248,0.2)', border: 'rgba(129,140,248,0.5)', fg: '#E0E7FF', font: MONO, fontSize: 19, dotColor: '#818CF8'
+      });
+
+      drawClippedText('OpenAI o1', 96, 390, prog(lt, 0.05, 0.45), {
+        fontSize: 185, weight: 800, color: '#FFFFFF'
+      });
+      drawClippedText('THINKING BEFORE ANSWERING.', 102, 480, prog(lt, 0.18, 0.45), {
+        fontSize: 56, weight: 700, color: '#A5B4FC'
+      });
+
+      // Simulated "Thought for X seconds..." Reasoning UI Card
+      const cardP = easeOutBack(prog(lt, 0.22, 0.5));
+      drawCard(96, 545, 1728, 325, 28, {
+        bg: 'rgba(15,18,36,0.85)',
+        border: 'rgba(165,180,252,0.3)',
+        shadow: 'rgba(99,102,241,0.25)',
+        shadowBlur: 50,
+        alpha: clamp(cardP)
+      });
+
+      const secs = Math.floor(lerp(1, 14, prog(lt, 0.2, 2.2)));
+      drawPill(144, 615, `CHAIN OF THOUGHT  ·  Thought for ${secs} seconds`, {
+        bg: 'rgba(99,102,241,0.25)', fg: '#C7D2FE', font: MONO, fontSize: 20, dotColor: '#A5B4FC'
+      });
+
+      // Animated reasoning steps lighting up
+      const steps = [
+        '01  Decompose problem',
+        '02  Test hypotheses',
+        '03  Self-correct logic',
+        '04  Verify final proof'
+      ];
+      steps.forEach((stText, i) => {
+        const sp2 = prog(lt, 0.35 + i * 0.45, 0.35);
+        const sx = 144 + i * 412;
+        roundRect(sx, 685, 384, 130, 20);
+        ctx.fillStyle = sp2 > 0.5 ? 'rgba(99,102,241,0.22)' : 'rgba(255,255,255,0.04)';
+        ctx.fill();
+        ctx.strokeStyle = sp2 > 0.5 ? '#818CF8' : 'rgba(255,255,255,0.1)';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        ctx.font = `700 24px ${MONO}`;
+        ctx.fillStyle = sp2 > 0.5 ? '#FFFFFF' : 'rgba(255,255,255,0.4)';
+        ctx.textAlign = 'left';
+        ctx.fillText(stText, sx + 26, 760);
+      });
+    } else {
+      // 5B: EARLY 2025 — 400M WAU · DEEP RESEARCH · GPT-4.5 · o3 & o4-mini
+      const st = lt - 1.5 * BAR;
+      drawPill(96, 175, 'EARLY 2025  ·  REASONING + AGENTS ACCELERATE', {
+        bg: 'rgba(255,255,255,0.1)', fg: '#FFFFFF', font: MONO, fontSize: 19, dotColor: '#C084FC'
+      });
+
+      drawClippedText('o3 & o4-mini', 96, 355, prog(st, 0, 0.45), {
+        fontSize: 144, weight: 800, color: '#FFFFFF'
+      });
+
+      // Right Giant Pill Stat: 400M WAU (Feb 2025)
+      const statPop = 1 + bp * 0.03;
+      ctx.save();
+      ctx.translate(1500, 295);
+      ctx.scale(statPop, statPop);
+      ctx.translate(-1500, -295);
+      drawCard(1190, 200, 634, 185, 28, {
+        bg: 'rgba(129,140,248,0.22)',
+        border: 'rgba(165,180,252,0.55)',
+        shadow: null
+      });
+      ctx.font = `800 84px ${SANS}`;
+      ctx.fillStyle = '#FFFFFF';
+      ctx.textAlign = 'center';
+      ctx.fillText('400M WAU', 1507, 300);
+      ctx.font = `600 20px ${MONO}`;
+      ctx.fillStyle = '#C7D2FE';
+      ctx.fillText('FEBRUARY 2025  ·  DOUBLED IN 6 MONTHS', 1507, 348);
+      ctx.restore();
+
+      // 4 Verified Early-2025 Milestone Cards
+      const m2025 = [
+        { d: 'JAN 31, 2025', t: 'o3-mini', s: 'Fast reasoning for everyone' },
+        { d: 'FEB 2025', t: 'Deep Research', s: 'Multi-step web synthesis agent' },
+        { d: 'FEB 27, 2025', t: 'GPT-4.5', s: 'Higher EQ & lower hallucinations' },
+        { d: 'APR 16, 2025', t: 'o3 & o4-mini', s: 'Full tool use inside reasoning' }
+      ];
+      m2025.forEach((m, i) => {
+        const cp = easeOutBack(prog(st, 0.1 + i * 0.14, 0.42));
+        const cx = 96 + i * 440;
+        const cy = 455 + (1 - cp) * 70;
+        drawCard(cx, cy, 408, 415, 28, {
+          bg: i === 3 ? 'rgba(99,102,241,0.3)' : 'rgba(255,255,255,0.06)',
+          border: i === 3 ? '#A5B4FC' : 'rgba(255,255,255,0.12)',
+          shadow: null,
+          alpha: clamp(cp)
+        });
+        drawPill(cx + 28, cy + 56, m.d, {
+          bg: 'rgba(255,255,255,0.12)', fg: '#E0E7FF', font: MONO, fontSize: 16, padX: 14, padY: 8
+        });
+        ctx.font = `800 42px ${SANS}`;
+        ctx.fillStyle = '#FFFFFF';
+        ctx.textAlign = 'left';
+        ctx.fillText(m.t, cx + 28, cy + 175);
+        ctx.font = `500 24px ${SANS}`;
+        ctx.fillStyle = 'rgba(255,255,255,0.72)';
+        ctx.fillText(m.s, cx + 28, cy + 235);
+      });
+    }
+  }
+
+  // =========================================================================
+  // SCENE 6 (22.50s - 28.125s): 2025 — GPT-5 (UNIFIED SYSTEM) & DEVDAY OCT 2025
+  // =========================================================================
+  function renderScene6(t) {
+    const lt = t - 12 * BAR; // 0 to 5.625s (3 bars)
+    const bp = beatPulse(t);
+    const phase2 = lt >= 1.5 * BAR;
+
+    // Bright High-Energy Alabaster Flash + Vivid Multi-Ribbon OpenAI Gradients
+    drawMeshGradient([
+      { x: 350 + Math.sin(t * 2) * 120, y: 220, r: 850, c0: 'rgba(251,146,60,0.34)' },
+      { x: 1580, y: 260, r: 850, c0: 'rgba(56,189,248,0.34)' },
+      { x: 960, y: 880, r: 900, c0: 'rgba(168,85,247,0.28)' }
+    ], '#FAFAF8', 0.52);
+    drawEditorialGrid(false, 0.05);
+
+    if (!phase2) {
+      // 6A: AUG 7, 2025 — GPT-5 · ONE UNIFIED SYSTEM
+      drawPill(W / 2, 178, 'AUGUST 7, 2025  ·  FLAGSHIP MILESTONE', {
+        align: 'center', bg: '#0A0B0E', fg: '#FFFFFF', font: MONO, fontSize: 19, dotColor: '#FB923C'
+      });
+
+      // Converging kinetic ribbons representing Fast + Deep Thinking unifying into GPT-5!
+      const ribbonP = easeOutExpo(prog(lt, 0, 0.85));
+      const ribbonColors = ['#FB923C', '#38BDF8', '#A855F7', '#10B981'];
+      ribbonColors.forEach((col, idx) => {
+        ctx.save();
+        ctx.strokeStyle = col;
+        ctx.lineWidth = 10 + bp * 5;
+        ctx.lineCap = 'round';
+        ctx.globalAlpha = 0.72;
+        ctx.beginPath();
+        const startY = 250 + idx * 190;
+        ctx.moveTo(0, startY);
+        ctx.bezierCurveTo(420, startY, 620, 520, lerp(0, W / 2, ribbonP), 520);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(W, startY);
+        ctx.bezierCurveTo(W - 420, startY, W - 620, 520, lerp(W, W / 2, ribbonP), 520);
+        ctx.stroke();
+        ctx.restore();
+      });
+
+      // Central Luminous Prism Card for GPT-5
+      const cardPop = easeOutBack(prog(lt, 0.08, 0.5)) * (1 + bp * 0.025);
+      ctx.save();
+      ctx.translate(W / 2, 520);
+      ctx.scale(cardPop, cardPop);
+      ctx.translate(-W / 2, -520);
+      drawCard(W / 2 - 420, 295, 840, 450, 44, {
+        bg: '#0A0B0E',
+        shadow: 'rgba(10,12,20,0.28)',
+        shadowBlur: 75,
+        shadowY: 28
+      });
+
+      ctx.font = `800 225px ${SANS}`;
+      ctx.fillStyle = '#FFFFFF';
+      ctx.textAlign = 'center';
+      ctx.fillText('GPT-5', W / 2, 565);
+
+      ctx.font = `700 32px ${MONO}`;
+      ctx.fillStyle = '#FDBA74';
+      ctx.fillText('ONE UNIFIED INTELLIGENCE', W / 2, 650);
+      ctx.restore();
+
+      // Bottom explanatory pill strip
+      const tags = ['REAL-TIME ROUTER', 'INSTANT + DEEP THINKING', 'CODING & AGENTS'];
+      tags.forEach((tg, i) => {
+        const tp = easeOutExpo(prog(lt, 0.35 + i * 0.14, 0.4));
+        drawPill(W / 2 - 360 + i * 360, 830 + (1 - tp) * 20, tg, {
+          align: 'center', bg: '#FFFFFF', border: 'rgba(10,12,18,0.1)', fg: '#0A0B0E', font: MONO, fontSize: 19, padX: 24, padY: 12, alpha: tp
+        });
+      });
+    } else {
+      // 6B: FALL 2025 — SORA 2 · DEVDAY OCT 6, 2025 · AGENTKIT · 800M WAU
+      const st = lt - 1.5 * BAR;
+      drawPill(96, 175, 'FALL 2025  ·  THE AGENT ECOSYSTEM ARRIVES', {
+        bg: '#0A0B0E', fg: '#FFFFFF', font: MONO, fontSize: 19, dotColor: '#10B981'
+      });
+
+      drawClippedText('DEVDAY 2025', 96, 355, prog(st, 0, 0.45), {
+        fontSize: 142, weight: 800, color: '#0A0B0E'
+      });
+
+      const cards = [
+        { date: 'SEP 30, 2025', title: 'Sora 2', desc: 'Upgraded video + native audio physics', bg: '#0A0B0E', fg: '#FFFFFF', acc: '#FB923C' },
+        { date: 'OCT 6, 2025', title: 'AgentKit & Apps', desc: 'Build autonomous workflows inside ChatGPT', bg: '#FFFFFF', fg: '#0A0B0E', acc: '#6366F1' },
+        { date: 'OCT 6, 2025', title: '800M WAU', desc: 'Announced live on DevDay stage', bg: '#059669', fg: '#FFFFFF', acc: '#A7F3D0' }
+      ];
+      cards.forEach((c, i) => {
+        const cp = easeOutBack(prog(st, 0.12 + i * 0.16, 0.45));
+        const cx = 96 + i * 586;
+        const cy = 435 + (1 - cp) * 70;
+        drawCard(cx, cy, 554, 445, 32, {
+          bg: c.bg,
+          border: 'rgba(10,12,18,0.08)',
+          alpha: clamp(cp)
+        });
+        drawPill(cx + 36, cy + 62, c.date, {
+          bg: c.bg === '#FFFFFF' ? 'rgba(10,12,18,0.06)' : 'rgba(255,255,255,0.16)',
+          fg: c.fg, font: MONO, fontSize: 17, padX: 18, padY: 9
+        });
+        ctx.font = `800 64px ${SANS}`;
+        ctx.fillStyle = c.fg;
+        ctx.textAlign = 'left';
+        ctx.fillText(c.title, cx + 36, cy + 210);
+
+        ctx.font = `500 28px ${SANS}`;
+        ctx.fillStyle = c.bg === '#FFFFFF' ? '#4B5563' : 'rgba(255,255,255,0.82)';
+        ctx.fillText(c.desc, cx + 36, cy + 280);
+
+        roundRect(cx + 36, cy + 375, 482 * clamp(cp), 14, 7);
+        ctx.fillStyle = c.acc;
+        ctx.fill();
+      });
+    }
+  }
+
+  // =========================================================================
+  // SCENE 7 (28.125s - 33.75s): EXPONENTIAL SCALE — 100M → 800M → 1.2B WAU
+  // =========================================================================
+  function renderScene7(t) {
+    const lt = t - 15 * BAR; // 0 to 5.625s (3 bars, building into massive Bar 18 drop!)
+    const bp = beatPulse(t);
+    const riserIntensity = prog(lt, 2 * BAR, BAR);
+
+    drawMeshGradient([
+      { x: 1450, y: 260, r: 900 + riserIntensity * 350, c0: `rgba(255,138,61,${0.25 + riserIntensity * 0.35})` },
+      { x: 350, y: 820, r: 850, c0: 'rgba(56,189,248,0.28)' }
+    ], '#070910', 0.45);
+    drawEditorialGrid(true, 0.06);
+
+    drawPill(96, 165, 'WEEKLY ACTIVE USERS  ·  VERIFIED TRAJECTORY (2023–2026)', {
+      bg: 'rgba(255,255,255,0.1)', fg: '#FFFFFF', font: MONO, fontSize: 19, dotColor: '#FF8A3D'
+    });
+
+    // Verified WAU milestones snapping in on beats!
+    const points = [
+      { date: 'NOV 2023', val: 100, label: '100M', at: 0.0 },
+      { date: 'AUG 2024', val: 200, label: '200M', at: 0.7 },
+      { date: 'DEC 2024', val: 300, label: '300M', at: 1.4 },
+      { date: 'FEB 2025', val: 400, label: '400M', at: 2.1 },
+      { date: 'OCT 2025', val: 800, label: '800M', at: 2.9 },
+      { date: 'FEB 2026', val: 900, label: '900M', at: 3.7 },
+      { date: 'MID 2026', val: 1000, label: '1.0B', at: 4.4 },
+      { date: 'SEP 2026', val: 1200, label: '1.2B', at: 5.0 }
+    ];
+
+    // Live Odometer Display top-right
+    let currentIdx = 0;
+    for (let i = 0; i < points.length; i++) {
+      if (lt >= points[i].at) currentIdx = i;
+    }
+    const cur = points[currentIdx];
+
+    ctx.save();
+    const oScale = 1 + bp * 0.04 + riserIntensity * 0.06;
+    ctx.translate(1824, 275);
+    ctx.scale(oScale, oScale);
+    ctx.font = `800 156px ${SANS}`;
+    ctx.fillStyle = currentIdx >= 6 ? '#FFB85C' : '#FFFFFF';
+    ctx.textAlign = 'right';
+    ctx.fillText(cur.label, 0, 0);
+    ctx.restore();
+
+    ctx.font = `700 28px ${MONO}`;
+    ctx.fillStyle = '#94A3B8';
+    ctx.textAlign = 'right';
+    ctx.fillText(`${cur.date}  ·  WEEKLY ACTIVE USERS`, 1824, 335);
+
+    // Animated Bar + Glowing Area Chart
+    const chartX = 110, chartY = 890, chartW = 1700, chartH = 510;
+    const barGap = chartW / points.length;
+
+    // Horizontal reference lines
+    [300, 600, 900, 1200].forEach(ref => {
+      const ry = chartY - (ref / 1250) * chartH;
+      ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(chartX, ry);
+      ctx.lineTo(chartX + chartW, ry);
+      ctx.stroke();
+    });
+
+    // Draw bars + trend line
+    const coords = [];
+    points.forEach((pt, i) => {
+      const p = easeOutBack(prog(lt, pt.at, 0.55));
+      const bx = chartX + i * barGap + 24;
+      const bw = barGap - 48;
+      const bh = (pt.val / 1250) * chartH * clamp(p);
+      const by = chartY - bh;
+      coords.push({ x: bx + bw / 2, y: by, p });
+
+      if (p > 0.01) {
+        const bg = ctx.createLinearGradient(bx, by, bx, chartY);
+        if (i >= 6) {
+          bg.addColorStop(0, '#FFB85C');
+          bg.addColorStop(1, '#EA580C');
+        } else if (i >= 4) {
+          bg.addColorStop(0, '#38BDF8');
+          bg.addColorStop(1, '#6366F1');
+        } else {
+          bg.addColorStop(0, 'rgba(255,255,255,0.85)');
+          bg.addColorStop(1, 'rgba(255,255,255,0.22)');
+        }
+        roundRect(bx, by, bw, Math.max(12, bh), 18);
+        ctx.fillStyle = bg;
+        ctx.fill();
+
+        // Value label above bar
+        ctx.font = `800 32px ${SANS}`;
+        ctx.fillStyle = i >= 6 ? '#FDE68A' : '#FFFFFF';
+        ctx.textAlign = 'center';
+        ctx.fillText(pt.label, bx + bw / 2, by - 18);
+
+        // Date label below bar
+        ctx.font = `600 18px ${MONO}`;
+        ctx.fillStyle = 'rgba(255,255,255,0.65)';
+        ctx.fillText(pt.date, bx + bw / 2, chartY + 34);
+      }
+    });
+
+    // Flash build-up right before Bar 18 climax drop
+    if (riserIntensity > 0.72) {
+      const f = (riserIntensity - 0.72) / 0.28;
+      ctx.fillStyle = `rgba(255,244,224,${f * 0.65})`;
+      ctx.fillRect(0, 0, W, H);
+    }
+  }
+
+  // =========================================================================
+  // SCENE 8 (33.75s - 43.125s): 2026 — CELESTIAL FRONTIER · 1.2B & GPT-6
+  // (Directly inspired by openai.com's live Nov 2026 Solar/Astra visual DNA!)
+  // =========================================================================
+  function renderScene8(t) {
+    const lt = t - 18 * BAR; // 0 to 9.375s (5 bars!)
+    const bp = beatPulse(t);
+    const sp = snarePulse(t);
+
+    // Deep Navy-Black Starfield + Warm Espresso-to-Amber Solar Horizon Glow
+    ctx.fillStyle = '#060812';
+    ctx.fillRect(0, 0, W, H);
+    drawStarfield(t, 220, 38);
+
+    // Glowing Solar Horizon Arc at bottom
+    const sunY = 1140 - bp * 24;
+    const hg = ctx.createRadialGradient(W / 2, sunY, 80, W / 2, sunY, 1180);
+    hg.addColorStop(0, '#FFF8E7');
+    hg.addColorStop(0.18, '#FFB85C');
+    hg.addColorStop(0.42, 'rgba(234,88,12,0.52)');
+    hg.addColorStop(0.72, 'rgba(124,45,18,0.16)');
+    hg.addColorStop(1, 'rgba(6,8,18,0)');
+    ctx.fillStyle = hg;
+    ctx.fillRect(0, 0, W, H);
+
+    // Grain overlay
+    ctx.save();
+    ctx.globalAlpha = 0.35;
+    ctx.fillStyle = grainPattern;
+    ctx.fillRect(0, 0, W, H);
+    ctx.restore();
+
+    if (lt < 1.5 * BAR) {
+      // 8A (33.75s - 36.56s): 1.2 BILLION WEEKLY ACTIVE USERS — PLANETARY SCALE
+      const p = easeOutBack(prog(lt, 0, 0.55));
+      drawPill(W / 2, 225, '2026  ·  HISTORIC PLANETARY SCALE', {
+        align: 'center', bg: 'rgba(255,184,92,0.18)', border: 'rgba(255,184,92,0.5)', fg: '#FEF3C7', font: MONO, fontSize: 20, dotColor: '#FFB85C'
+      });
+
+      ctx.save();
+      const s = p * (1 + bp * 0.035);
+      ctx.translate(W / 2, 505);
+      ctx.scale(s, s);
+      ctx.font = `800 245px ${SANS}`;
+      ctx.fillStyle = '#FFFFFF';
+      ctx.textAlign = 'center';
+      ctx.shadowColor = 'rgba(255,138,61,0.55)';
+      ctx.shadowBlur = 65;
+      ctx.fillText('1.2 BILLION', 0, 0);
+      ctx.restore();
+
+      drawClippedText('WEEKLY ACTIVE USERS', W / 2, 615, prog(lt, 0.16, 0.5), {
+        fontSize: 64, weight: 700, color: '#FDE68A', align: 'center'
+      });
+      drawClippedText('First AI platform in history to cross 1B+ active users.', W / 2, 690, prog(lt, 0.28, 0.5), {
+        fontSize: 34, weight: 500, color: 'rgba(255,255,255,0.8)', align: 'center'
+      });
+    } else if (lt < 3.5 * BAR) {
+      // 8B (36.56s - 40.31s): SEPTEMBER 2026 — GPT-6 FAMILY (ASTRA · SOL · LUNA)
+      const st = lt - 1.5 * BAR;
+      drawPill(96, 165, 'SEPTEMBER 2026  ·  THE GPT-6 GENERATION', {
+        bg: 'rgba(255,184,92,0.18)', border: 'rgba(255,184,92,0.45)', fg: '#FEF3C7', font: MONO, fontSize: 19, dotColor: '#FFB85C'
+      });
+
+      drawClippedText('GPT-6', 96, 345, prog(st, 0, 0.45), {
+        fontSize: 168, weight: 800, color: '#FFFFFF'
+      });
+      drawClippedText('ASTRONOMICAL SCALE. THREE TIERS.', 620, 315, prog(st, 0.12, 0.45), {
+        fontSize: 44, weight: 700, color: '#FDE68A'
+      });
+
+      // 3 Glowing Celestial Tier Cards (Astra, Sol, Luna)
+      const tiers = [
+        { name: 'ASTRA', sub: 'FLAGSHIP FRONTIER', d1: 'Deepest reasoning, science', d2: '& complex discovery', orbC0: '#FFF8E7', orbC1: '#FF7A2F', date: 'SEP 2026' },
+        { name: 'SOL', sub: 'AGENTIC WORKHORSE', d1: 'Autonomous workflows, coding', d2: '& enterprise tools', orbC0: '#FEF08A', orbC1: '#F59E0B', date: 'SEP 2026' },
+        { name: 'LUNA', sub: 'HIGH-SPEED SCALE', d1: 'Everyday intelligence for', d2: '1B+ users worldwide', orbC0: '#E0F2FE', orbC1: '#38BDF8', date: 'SEP 2026' }
+      ];
+      tiers.forEach((tr, i) => {
+        const cp = easeOutBack(prog(st, 0.14 + i * 0.22, 0.48));
+        const cx = 96 + i * 586;
+        const cy = 415 + (1 - cp) * 80;
+        drawCard(cx, cy, 554, 465, 34, {
+          bg: 'rgba(14,18,32,0.82)',
+          border: `rgba(255,215,160,${0.25 + (i === 0 ? bp * 0.25 : 0)})`,
+          shadow: 'rgba(0,0,0,0.45)',
+          shadowBlur: 50,
+          alpha: clamp(cp)
+        });
+
+        // Glowing miniature celestial orb inside each card
+        const ox = cx + 445, oy = cy + 110, or = 56 + bp * 8;
+        const og = ctx.createRadialGradient(ox - 12, oy - 12, 4, ox, oy, or);
+        og.addColorStop(0, tr.orbC0);
+        og.addColorStop(0.55, tr.orbC1);
+        og.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.beginPath();
+        ctx.arc(ox, oy, or, 0, Math.PI * 2);
+        ctx.fillStyle = og;
+        ctx.fill();
+
+        drawPill(cx + 36, cy + 62, tr.date, {
+          bg: 'rgba(255,255,255,0.1)', fg: '#FFFFFF', font: MONO, fontSize: 16, padX: 16, padY: 8
+        });
+
+        ctx.font = `800 84px ${SANS}`;
+        ctx.fillStyle = '#FFFFFF';
+        ctx.textAlign = 'left';
+        ctx.fillText(tr.name, cx + 36, cy + 225);
+
+        ctx.font = `700 22px ${MONO}`;
+        ctx.fillStyle = tr.orbC1;
+        ctx.fillText(tr.sub, cx + 36, cy + 280);
+
+        ctx.font = `500 24px ${SANS}`;
+        ctx.fillStyle = 'rgba(255,255,255,0.78)';
+        ctx.fillText(tr.d1, cx + 36, cy + 345);
+        ctx.fillText(tr.d2, cx + 36, cy + 382);
+      });
+    } else {
+      // 8C (40.31s - 43.125s): NOVEMBER 2026 — THE FRONTIER TODAY (GPT-6.2 · IMAGES 2.6 · SCIENCE)
+      const st = lt - 3.5 * BAR;
+      drawPill(W / 2, 168, 'NOVEMBER 2026  ·  THE FRONTIER TODAY', {
+        align: 'center', bg: 'rgba(255,255,255,0.12)', fg: '#FFFFFF', font: MONO, fontSize: 20, dotColor: '#FFB85C'
+      });
+
+      drawClippedText('GPT-6.2 ASTRA & SOL', W / 2, 330, prog(st, 0, 0.45), {
+        fontSize: 118, weight: 800, color: '#FFFFFF', align: 'center'
+      });
+
+      // 4 Live Nov 2026 Breakthrough Tiles (directly verified from openai.com!)
+      const novCards = [
+        { d: 'NOV 17, 2026', t: 'GPT-6.2', s: 'Astra & Sol flagship rollout' },
+        { d: 'NOV 4, 2026', t: 'Images 2.6', s: 'Next-gen visual creation' },
+        { d: 'NOV 16, 2026', t: 'Computer Use', s: 'Autonomous workflow agents' },
+        { d: 'NOV 24, 2026', t: 'AI for Science', s: 'Protein design & exoplanets' }
+      ];
+      novCards.forEach((nc, i) => {
+        const cp = easeOutBack(prog(st, 0.1 + i * 0.14, 0.42));
+        const cx = 96 + i * 440;
+        const cy = 435 + (1 - cp) * 75;
+        drawCard(cx, cy, 408, 390, 30, {
+          bg: 'rgba(255,255,255,0.08)',
+          border: 'rgba(255,210,160,0.28)',
+          shadow: null,
+          alpha: clamp(cp)
+        });
+        drawPill(cx + 28, cy + 56, nc.d, {
+          bg: 'rgba(255,184,92,0.2)', fg: '#FDE68A', font: MONO, fontSize: 16, padX: 14, padY: 8
+        });
+        ctx.font = `800 44px ${SANS}`;
+        ctx.fillStyle = '#FFFFFF';
+        ctx.textAlign = 'left';
+        ctx.fillText(nc.t, cx + 28, cy + 185);
+        ctx.font = `500 24px ${SANS}`;
+        ctx.fillStyle = 'rgba(255,255,255,0.78)';
+        ctx.fillText(nc.s, cx + 28, cy + 245);
+      });
+    }
+  }
+
+  // =========================================================================
+  // SCENE 9 (43.125s - 50.00s): FOUR YEARS OF CHATGPT — UNOFFICIAL TRIBUTE FINALE
+  // =========================================================================
+  function renderScene9(t) {
+    const lt = t - 23 * BAR; // 0 to 6.875s
+
+    // Quick 0.8s flash-montage of the 4 years right on the outro beat!
+    if (lt < 0.90) {
+      const years = ['2022', '2023', '2024', '2025', '2026'];
+      const subs = ['GPT-3.5 · 1M IN 5 DAYS', 'GPT-4 · 100M WAU', 'GPT-4o · o1 REASONING', 'GPT-5 · 800M WAU', 'GPT-6 · 1.2B WAU'];
+      const bgs = ['#FAFAF8', '#0A0B0E', '#061224', '#FAFAF8', '#080C18'];
+      const fgs = ['#0A0B0E', '#FFFFFF', '#38BDF8', '#0A0B0E', '#FFB85C'];
+      const idx = Math.min(4, Math.floor(lt / 0.18));
+      ctx.fillStyle = bgs[idx];
+      ctx.fillRect(0, 0, W, H);
+      ctx.font = `800 280px ${SANS}`;
+      ctx.fillStyle = fgs[idx];
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(years[idx], W / 2, H / 2 - 20);
+      ctx.font = `700 34px ${MONO}`;
+      ctx.fillText(subs[idx], W / 2, H / 2 + 150);
+      ctx.textBaseline = 'alphabetic';
+      return;
+    }
+
+    const ft = lt - 0.90;
+    const breath = Math.sin(ft * 1.8) * 14;
+
+    // Serene Luminous Alabaster Canvas with Warm Solar + Sky + Coral Halo
+    drawMeshGradient([
+      { x: W / 2 - 280, y: H / 2 - 80, r: 680 + breath, c0: 'rgba(255,176,120,0.34)' },
+      { x: W / 2 + 280, y: H / 2 + 60, r: 680 - breath, c0: 'rgba(56,189,248,0.28)' },
+      { x: W / 2, y: H / 2, r: 520, c0: 'rgba(168,85,247,0.14)' }
+    ], '#FAFAF8', 0.45);
+    drawEditorialGrid(false, 0.04);
+
+    // Subtle Rotating Geometric Tribute Rosette behind title
+    ctx.save();
+    ctx.globalAlpha = 0.12 * easeOutExpo(prog(ft, 0, 0.8));
+    drawTributeEmblem(W / 2, 430, 175 + breath * 0.4, ft * 0.25, '#0A0B0E', 2.5);
+    ctx.restore();
+
+    // Main Finale Lockup
+    drawPill(W / 2, 235, '2022.11.30  —  2026.11.30', {
+      align: 'center', bg: '#0A0B0E', fg: '#FFFFFF', font: MONO, fontSize: 22, padX: 30, padY: 13, dotColor: '#38BDF8', alpha: easeOutExpo(prog(ft, 0, 0.6))
+    });
+
+    drawClippedText('FOUR YEARS OF', W / 2, 405, prog(ft, 0.12, 0.7), {
+      fontSize: 96, weight: 800, color: '#0A0B0E', align: 'center'
+    });
+    drawClippedText('CHATGPT', W / 2, 540, prog(ft, 0.25, 0.7), {
+      fontSize: 158, weight: 800, color: '#0A0B0E', align: 'center'
+    });
+
+    // Closing Prompt Box Echo ("What will we build next?")
+    const pBox = easeOutExpo(prog(ft, 0.65, 0.7));
+    drawCard(W / 2 - 360, 610 + (1 - pBox) * 30, 720, 86, 43, {
+      bg: '#FFFFFF',
+      border: 'rgba(10,12,18,0.09)',
+      shadow: 'rgba(14,165,233,0.14)',
+      shadowBlur: 40,
+      alpha: pBox
+    });
+    ctx.save();
+    ctx.globalAlpha = pBox;
+    ctx.font = `500 28px ${SANS}`;
+    ctx.fillStyle = '#374151';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const nextStr = 'What will we build next?';
+    const nLen = Math.floor(clamp((ft - 0.9) / 1.4) * nextStr.length);
+    ctx.fillText(nextStr.slice(0, nLen) + (Math.floor(t * 4) % 2 === 0 ? ' |' : '  '), W / 2, 653 + (1 - pBox) * 30);
+    ctx.restore();
+
+    // Explicit Third-Party Unofficial Tribute Disclaimer (crystal clear!)
+    const dAlpha = easeOutExpo(prog(ft, 1.0, 0.8));
+    ctx.save();
+    ctx.globalAlpha = dAlpha;
+    ctx.font = `700 18px ${MONO}`;
+    ctx.fillStyle = '#4B5563';
+    ctx.textAlign = 'center';
+    ctx.fillText('AN UNOFFICIAL 4TH ANNIVERSARY TRIBUTE  ·  INDEPENDENT FAN RETROSPECTIVE', W / 2, 790);
+    ctx.font = `500 16px ${MONO}`;
+    ctx.fillStyle = '#9CA3AF';
+    ctx.fillText('NOT PRODUCED BY OR AFFILIATED WITH OPENAI  ·  ALL MILESTONES & STATS VERIFIED (2022–2026)', W / 2, 824);
+    ctx.restore();
+
+    // Smooth Fade-out at end (48.5s -> 50.0s)
+    if (t > 48.4) {
+      const fade = easeInOutCubic(prog(t, 48.4, 1.6));
+      ctx.fillStyle = `rgba(7,9,16,${fade})`;
+      ctx.fillRect(0, 0, W, H);
+    }
+  }
+
+  // =========================================================================
+  // PERSISTENT EDITORIAL TELEMETRY HUD (Third-party retrospective framing)
+  // =========================================================================
+  function renderHUD(t) {
+    // Determine if current frame is dark-mode for HUD contrast
+    const isDark =
+      (t >= 5 * BAR && t < 6 * BAR) ||
+      (t >= 6 * BAR && t < 12 * BAR) ||
+      (t >= 15 * BAR && t < 23 * BAR);
+
+    // Hide HUD during final fade or montage flash
+    if (t > 43.125 && t < 44.05) return;
+    let hudAlpha = 1;
+    if (t > 48.2) hudAlpha = 1 - prog(t, 48.2, 1.4);
+
+    const fg = isDark ? 'rgba(255,255,255,0.82)' : 'rgba(10,11,16,0.78)';
+    const muted = isDark ? 'rgba(255,255,255,0.38)' : 'rgba(10,11,16,0.35)';
+    const lineCol = isDark ? 'rgba(255,255,255,0.14)' : 'rgba(10,11,16,0.12)';
+    const bp = beatPulse(t);
+
+    ctx.save();
+    ctx.globalAlpha = hudAlpha;
+
+    // Top-left: Tribute Label
+    ctx.font = `700 17px ${MONO}`;
+    ctx.fillStyle = fg;
+    ctx.textAlign = 'left';
+    ctx.fillText('CHATGPT // 4Y UNOFFICIAL TRIBUTE', 96, 68);
+
+    // Top-right: Live Era Indicator + Beat Pulse Dot
+    let era = '2022.11.30';
+    if (t >= 23 * BAR) era = '2022 — 2026';
+    else if (t >= 18 * BAR) era = '2026 · GPT-6 ERA';
+    else if (t >= 15 * BAR) era = '2023–2026 · SCALE';
+    else if (t >= 12 * BAR) era = '2025 · GPT-5 ERA';
+    else if (t >= 9 * BAR) era = '2024–25 · REASONING';
+    else if (t >= 6 * BAR) era = '2024 · OMNI ERA';
+    else if (t >= 4 * BAR) era = '2023 · GPT-4 ERA';
+    else if (t >= 2 * BAR) era = '2022–23 · THE SPARK';
+
+    ctx.textAlign = 'right';
+    ctx.fillStyle = fg;
+    ctx.fillText(era, 1824, 68);
+
+    // Bottom Timeline Scrubber Bar + Audio-Reactive Beat Equalizer
+    const barY = 1018;
+    const barX = 96, barW = 1480;
+    ctx.fillStyle = lineCol;
+    roundRect(barX, barY, barW, 4, 2);
+    ctx.fill();
+
+    const progress = clamp(t / DURATION);
+    ctx.fillStyle = isDark ? '#38BDF8' : '#0A0B0E';
+    roundRect(barX, barY, barW * progress, 4, 2);
+    ctx.fill();
+
+    // Glowing scrubber head
+    ctx.beginPath();
+    ctx.arc(barX + barW * progress, barY + 2, 6 + bp * 3, 0, Math.PI * 2);
+    ctx.fillStyle = isDark ? '#FFB85C' : '#0EA5E9';
+    ctx.fill();
+
+    // Year ticks along bottom
+    ['2022', '2023', '2024', '2025', '2026'].forEach((yr, i) => {
+      ctx.font = `600 14px ${MONO}`;
+      ctx.fillStyle = muted;
+      ctx.textAlign = i === 0 ? 'left' : i === 4 ? 'right' : 'center';
+      ctx.fillText(yr, barX + (barW * i) / 4, barY - 12);
+    });
+
+    // Bottom-right: 16-bar Beat-Synced Visualizer
+    const vizX = 1620;
+    for (let i = 0; i < 16; i++) {
+      const freqWave = Math.abs(Math.sin(t * (7 + i * 0.9) + i * 1.3));
+      const active = t >= 2 * BAR && t < 24 * BAR ? 1 : 0.25;
+      const h = 4 + (bp * 20 + freqWave * 16) * active;
+      ctx.fillStyle = isDark ? 'rgba(255,184,92,0.85)' : 'rgba(10,11,16,0.75)';
+      roundRect(vizX + i * 13, barY + 4 - h, 7, h, 3);
+      ctx.fill();
+    }
+
+    ctx.restore();
+  }
+
+  // =========================================================================
+  // MASTER FRAME RENDERER (Called deterministically by Puppeteer for every frame)
+  // =========================================================================
+  window.renderFrame = function(frameIndex, fps = 30) {
+    const t = frameIndex / fps;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+    if (t < 2 * BAR) {
+      renderScene1(t);
+    } else if (t < 4 * BAR) {
+      renderScene2(t);
+    } else if (t < 6 * BAR) {
+      renderScene3(t);
+    } else if (t < 9 * BAR) {
+      renderScene4(t);
+    } else if (t < 12 * BAR) {
+      renderScene5(t);
+    } else if (t < 15 * BAR) {
+      renderScene6(t);
+    } else if (t < 18 * BAR) {
+      renderScene7(t);
+    } else if (t < 23 * BAR) {
+      renderScene8(t);
+    } else {
+      renderScene9(t);
+    }
+
+    // Crisp Beat-Hit White Flash on major act transitions (first 0.14s of act drop)
+    const drops = [2 * BAR, 6 * BAR, 9 * BAR, 12 * BAR, 15 * BAR, 18 * BAR, 23 * BAR];
+    for (const d of drops) {
+      if (t >= d && t < d + 0.16) {
+        const fa = (1 - (t - d) / 0.16);
+        ctx.fillStyle = `rgba(255,255,255,${fa * fa * 0.55})`;
+        ctx.fillRect(0, 0, W, H);
+      }
+    }
+
+    renderHUD(t);
+  };
+
+  // Render preview frame 0 on load
+  window.renderFrame(0, 30);
+})();
+</script>
+</body>
+</html>
