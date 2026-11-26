@@ -4,6 +4,12 @@
 
 [成片 MP4](outputs/Nanjing.mp4) · [最初的提示词](PROMPT.md)
 
+## 关键帧预览
+
+![南京折叠纸地图动画 6 个关键节点总览](previews/keyframes-overview.jpg)
+
+分镜头单帧：[01 地图展开](previews/01-unfold-title.jpg) · [02 中华门](previews/02-zhonghua-gate.jpg) · [03 夫子庙·秦淮河](previews/03-fuzimiao-qinhuai.jpg) · [04 中山陵](previews/04-sun-yatsen-mausoleum.jpg) · [05 紫峰大厦](previews/05-zifeng-night.jpg) · [06 烟花终幕](previews/06-fireworks-finale.jpg)
+
 ## 渲染
 
 安装 Node.js、Chromium 和 FFmpeg。环境需有 Noto Serif CJK SC 字体，用于中文字幕。素材和音轨已随项目提供。

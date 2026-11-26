@@ -4,31 +4,37 @@
 
 ## 2026 年 11 月 26 日 · 纸船动画
 
-[Codex 成片](paper-boat-animation/codex/paper-boat.mp4) · [Codex 源码与说明](paper-boat-animation/codex/) · [AGY 成片](paper-boat-animation/agy/paper_boat_story.mp4) · [AGY 源码与配乐](paper-boat-animation/agy/)
+![纸船动画关键帧对照（上：Codex，下：AGY）](paper-boat-animation/previews/frame-comparison.jpg)
+
+[两套短片、关键帧与源码](paper-boat-animation/README.md) · [Codex 成片](paper-boat-animation/codex/paper-boat.mp4) · [AGY 成片](paper-boat-animation/agy/paper_boat_story.mp4)
 
 ## 2026 年 11 月 26 日 · 智能爆炸演示
 
-Codex 的《智能爆炸》与 AGY 的《EVENT HORIZON》。收录互动网页、PowerPoint、源码及美术资产。
+Codex 的《智能爆炸》与 AGY 的《EVENT HORIZON》。收录互动网页、PowerPoint、源码、美术资产及两套关键页预览。
 
-[两套演示与源码](intelligence-explosion/README.md)
+[两套演示、预览与源码](intelligence-explosion/README.md) · [Codex 网页预览](intelligence-explosion/previews/codex-web.jpg) · [AGY 网页预览](intelligence-explosion/previews/agy-web.jpg)
 
 ## 2026 年 11 月 26 日 · 粒子宇宙
 
+![粒子宇宙对照（左：Codex，右：AGY；上：默认，下：交互）](particle-universe/previews/side-by-side.jpg)
+
 Codex 的《引力余晖》和 AGY 的《AETHERIA》使用 p5.js 实时绘制星尘、光轨和交互星爆。
 
-[两套网页、源码和运行说明](particle-universe/README.md)
+[两套网页、截图、源码和运行说明](particle-universe/README.md)
 
 ## 2026 年 11 月 26 日 · 雨夜便利店网页实验
 
-Codex 的《雨停之前》与 AGY 的《深夜街角 · 24H》网页。保留可打开的 HTML、源码和美术素材。
+![雨夜便利店对照（左：Codex《雨停之前》，右：AGY《深夜街角》）](rainy-convenience-store/previews/side-by-side.jpg)
 
-[两套网页与素材](rainy-convenience-store/README.md)
+Codex 的《雨停之前》与 AGY 的《深夜街角 · 24H》网页。保留可打开的 HTML、源码、美术素材和效果截图。
+
+[两套网页、截图与素材](rainy-convenience-store/README.md)
 
 ## 2026 年 11 月 25 日 · 南京折叠纸地图动画
 
 Codex 用 Three.js 制作 55 秒竖屏短片。南京地标在同一张地图上依次立起，镜头沿路线移动，最后拉升至烟花夜景。
 
-[成片 MP4](nanjing-paper-map/outputs/Nanjing.mp4) · [源码、素材与复现说明](nanjing-paper-map/README.md) · [最初的提示词](nanjing-paper-map/PROMPT.md)
+[关键帧总览](nanjing-paper-map/previews/keyframes-overview.jpg) · [成片 MP4](nanjing-paper-map/outputs/Nanjing.mp4) · [源码、素材与复现说明](nanjing-paper-map/README.md) · [最初的提示词](nanjing-paper-map/PROMPT.md)
 
 ## 2026 年 11 月 25 日 · ChatGPT 四周年动效视频
 
