@@ -1,0 +1,1655 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>纸船与小溪 — 手绘绘本动画短片</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    width: 100%; height: 100%;
+    background: #231f1a;
+    display: flex; align-items: center; justify-content: center;
+    overflow: hidden;
+    font-family: "Georgia", "Songti SC", serif;
+  }
+  canvas {
+    display: block;
+    width: 100vw; height: 100vh;
+    object-fit: contain;
+    background: #FAF3E3;
+  }
+</style>
+</head>
+<body>
+<canvas id="stage" width="1920" height="1080"></canvas>
+<script>
+(() => {
+  'use strict';
+
+  const WIDTH = 1920;
+  const HEIGHT = 1080;
+  const FPS = 30;
+  const DURATION = 12.5;
+  const TOTAL_FRAMES = Math.round(DURATION * FPS); // 375 frames
+
+  const canvas = document.getElementById('stage');
+  const ctx = canvas.getContext('2d', { alpha: false });
+
+  // =========================================================================
+  // 1. DETERMINISTIC PRNG & MATH UTILITIES
+  // =========================================================================
+  function mulberry32(seed) {
+    let a = seed >>> 0;
+    return function () {
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  function hash2D(x, y, seed = 1337) {
+    let n = Math.imul(x, 374761393) + Math.imul(y, 668265263) + Math.imul(seed, 1442695041);
+    n = (n ^ (n >>> 13)) | 0;
+    n = Math.imul(n, 1274126177);
+    return ((n ^ (n >>> 16)) >>> 0) / 4294967296;
+  }
+
+  function smoothstep(edge0, edge1, x) {
+    const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
+    return t * t * (3 - 2 * t);
+  }
+
+  function clamp(v, lo, hi) { return v < lo ? lo : (v > hi ? hi : v); }
+  function lerp(a, b, t) { return a + (b - a) * t; }
+  function easeOutCubic(t) { return 1 - Math.pow(1 - clamp(t, 0, 1), 3); }
+  function easeInOutCubic(t) {
+    t = clamp(t, 0, 1);
+    return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+  }
+  function easeOutBack(t) {
+    t = clamp(t, 0, 1);
+    const c1 = 1.70158, c3 = c1 + 1;
+    return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
+  }
+
+  // =========================================================================
+  // 2. WORLD COORDINATE SYSTEM (WIDE PANORAMIC STREAM: 0..3300 x 0..1080)
+  // =========================================================================
+  // Stream center Y as a gentle S-curve across world X
+  function streamCenterY(wx) {
+    return 655
+      + Math.sin(wx * 0.0021 - 0.5) * 68
+      + Math.sin(wx * 0.0048 + 1.1) * 22
+      - smoothstep(1900, 3100, wx) * 55;
+  }
+
+  function streamHalfWidth(wx) {
+    return 178
+      + Math.sin(wx * 0.0018 + 0.4) * 26
+      + smoothstep(2000, 3150, wx) * 95; // opens into sunlit glade
+  }
+
+  // Camera pan X: smoothly follows the paper boat from launch bank into sunlit glade
+  function getCameraX(t) {
+    // 0.0 - 2.4s: stay cozy near child & launch bank (x ~ 0..60)
+    // 2.4 - 11.8s: smooth follow downstream to x ~ 1320
+    const p1 = smoothstep(1.8, 11.6, t);
+    const p2 = easeInOutCubic(smoothstep(2.2, 12.2, t));
+    return lerp(0, 1340, p1 * 0.35 + p2 * 0.65);
+  }
+
+  // Paper boat trajectory in world space
+  function getBoatState(t) {
+    // Launch phase: 0.0 - 1.55s held by child's hands right at the grassy upper shoreline
+    const launchX = 368;
+    const bankEdgeY = streamCenterY(launchX) - streamHalfWidth(launchX) + 38;
+
+    if (t < 1.55) {
+      const p = easeInOutCubic(smoothstep(0.12, 1.55, t));
+      const x = lerp(338, launchX, p);
+      const y = lerp(bankEdgeY - 56, bankEdgeY, p);
+      const rot = lerp(-0.10, 0.03, p) + Math.sin(t * 4) * 0.014;
+      return { x, y, rot, bob: 0, inWater: false, speed: 0, sunGlow: 0 };
+    }
+
+    // Floating downstream: 1.55s -> 12.5s
+    const dt = t - 1.55;
+    // Smoothly drift from shoreline edge out into the main stream current
+    const nudgeBoost = smoothstep(1.75, 2.5, t) * 115;
+    const midDrift = smoothstep(2.4, 7.6, t) * 1210;
+    const preDuckDrift = smoothstep(7.2, 8.9, t) * 165;
+    const duckPush = easeOutCubic(smoothstep(8.85, 12.3, t)) * 660;
+
+    const wx = launchX + nudgeBoost + midDrift + preDuckDrift + duckPush;
+
+    // Blend smoothly from the upper shoreline edge into the stream's main current
+    const intoMainCurrent = easeInOutCubic(smoothstep(1.55, 3.6, t));
+    const avoidStone1 = Math.exp(-Math.pow((wx - 965) / 145, 2)) * 56;
+    const avoidStone2 = -Math.exp(-Math.pow((wx - 1430) / 160, 2)) * 52;
+    const naturalSway = Math.sin(dt * 1.45) * 14 + Math.sin(dt * 0.72 + 1.2) * 10;
+    const sunAim = smoothstep(1900, 2550, wx) * (-18);
+
+    const targetCenterY = streamCenterY(wx) - 10 + avoidStone1 + avoidStone2 + naturalSway + sunAim;
+    const wy = lerp(bankEdgeY, targetCenterY, intoMainCurrent);
+
+    // Bobbing from water touch & gentle waves + duckling push tilt
+    const splashBob = Math.exp(-(t - 1.55) * 2.6) * Math.sin((t - 1.55) * 13) * 7.0;
+    const waveBob = Math.sin(t * 3.8 + wx * 0.01) * 2.8;
+    const pushTilt = Math.exp(-Math.pow((t - 9.15) / 0.55, 2)) * 0.11;
+
+    const wxNext = wx + 22;
+    const wyNextCenter = streamCenterY(wxNext) - 10
+      + Math.exp(-Math.pow((wxNext - 965) / 145, 2)) * 56
+      - Math.exp(-Math.pow((wxNext - 1430) / 160, 2)) * 52
+      + naturalSway + sunAim;
+    const wyNext = lerp(bankEdgeY, wyNextCenter, intoMainCurrent);
+    const heading = Math.atan2(wyNext - wy, wxNext - wx) * 0.55
+      + Math.sin(t * 2.7) * 0.045 + pushTilt;
+
+    const sunGlow = smoothstep(2050, 2520, wx);
+    return {
+      x: wx,
+      y: wy + splashBob + waveBob,
+      rot: heading,
+      bob: splashBob + waveBob,
+      inWater: true,
+      speed: 1,
+      sunGlow
+    };
+  }
+
+  // Duckling trajectory in world space (enters ~7.3s, catches up & pushes boat at 8.85s)
+  function getDuckState(t, boat) {
+    if (t < 7.0) return { visible: false };
+
+    const appear = smoothstep(7.05, 8.85, t);
+    const enterEase = easeInOutCubic(appear);
+
+    // Starts tucked near upper mossy reeds around wx=1630, wy=streamTop
+    const startX = 1615;
+    const startY = streamCenterY(startX) - 135;
+
+    // Target right behind boat's stern during contact (8.85s..9.8s)
+    const behindBoatX = boat.x - 94;
+    const behindBoatY = boat.y + 6;
+
+    let x, y, rot, wingLift = 0, beakOpen = 0, headBob = 0;
+
+    if (t < 8.85) {
+      // Curved joyful approach arc
+      const arcY = -Math.sin(enterEase * Math.PI) * 24;
+      x = lerp(startX, behindBoatX, enterEase);
+      y = lerp(startY, behindBoatY, enterEase) + arcY;
+      rot = lerp(0.32, 0.02, enterEase) + Math.sin(t * 7.5) * 0.04;
+      wingLift = Math.max(0, Math.sin((t - 7.3) * 6)) * 0.25;
+      beakOpen = (t > 8.35 && t < 8.65) ? Math.sin(((t - 8.35) / 0.3) * Math.PI) : 0;
+    } else {
+      // Gently nudging the boat (8.85 - 9.75s), then happily trailing in the golden light
+      const afterPush = smoothstep(9.65, 12.5, t);
+      const trailGap = lerp(90, 148, easeOutCubic(afterPush));
+      const nudgeImpulse = Math.exp(-Math.pow((t - 9.05) / 0.28, 2)) * 12;
+      x = boat.x - trailGap + nudgeImpulse;
+      y = boat.y + 7 + Math.sin(t * 4.2) * 3.5 + afterPush * 14;
+      rot = boat.rot * 0.4 + Math.sin(t * 5.8) * 0.035;
+      // Happy little wing flutter right after pushing!
+      wingLift = Math.exp(-Math.pow((t - 9.45) / 0.35, 2)) * Math.abs(Math.sin(t * 22)) * 0.85
+        + Math.exp(-Math.pow((t - 10.6) / 0.4, 2)) * 0.35;
+      beakOpen = (t > 9.45 && t < 9.78) ? Math.sin(((t - 9.45) / 0.33) * Math.PI) : 0;
+    }
+
+    headBob = Math.sin(t * 8.5) * 2.5 + Math.exp(-Math.pow((t - 9.0) / 0.22, 2)) * 5;
+    const sunGlow = smoothstep(2000, 2480, x);
+
+    return {
+      visible: true,
+      x, y, rot, wingLift, beakOpen, headBob,
+      paddlePhase: t * 11.5,
+      alpha: smoothstep(7.05, 7.55, t),
+      sunGlow
+    };
+  }
+
+  // =========================================================================
+  // 3. PRE-GENERATED WATERCOLOR PAPER TEXTURE & STATIC SCENE ASSETS
+  // =========================================================================
+  const paperCanvas = document.createElement('canvas');
+  paperCanvas.width = WIDTH;
+  paperCanvas.height = HEIGHT;
+  const pCtx = paperCanvas.getContext('2d');
+
+  (function buildPaperTexture() {
+    // Cold-press warm watercolor paper grain
+    pCtx.fillStyle = '#FCF7EC';
+    pCtx.fillRect(0, 0, WIDTH, HEIGHT);
+
+    const img = pCtx.getImageData(0, 0, WIDTH, HEIGHT);
+    const d = img.data;
+    const rng = mulberry32(20261126);
+
+    for (let y = 0; y < HEIGHT; y++) {
+      for (let x = 0; x < WIDTH; x++) {
+        const i = (y * WIDTH + x) * 4;
+        // Multi-scale paper fiber texture
+        const fine = (rng() - 0.5) * 14;
+        const coarse = (hash2D(x >> 2, y >> 2, 71) - 0.5) * 10;
+        const fiber = Math.sin(x * 0.17 + y * 0.04) * 2.2 + Math.cos(y * 0.21 - x * 0.03) * 1.8;
+        const v = fine + coarse + fiber;
+        d[i]     = clamp(251 + v, 225, 255);
+        d[i + 1] = clamp(246 + v * 0.96, 220, 255);
+        d[i + 2] = clamp(235 + v * 0.9, 205, 248);
+        d[i + 3] = 255;
+      }
+    }
+    pCtx.putImageData(img, 0, 0);
+
+    // Subtle organic watercolor blotches on the paper
+    for (let k = 0; k < 28; k++) {
+      const bx = rng() * WIDTH;
+      const by = rng() * HEIGHT;
+      const br = 90 + rng() * 240;
+      const g = pCtx.createRadialGradient(bx, by, 10, bx, by, br);
+      g.addColorStop(0, k % 2 === 0 ? 'rgba(232, 212, 178, 0.055)' : 'rgba(255, 248, 232, 0.05)');
+      g.addColorStop(1, 'rgba(232, 212, 178, 0)');
+      pCtx.fillStyle = g;
+      pCtx.beginPath();
+      pCtx.arc(bx, by, br, 0, Math.PI * 2);
+      pCtx.fill();
+    }
+  })();
+
+  // =========================================================================
+  // 4. HAND-DRAWN SKETCHING HELPERS (WITH SUBTLE 10FPS STORYBOOK BOIL)
+  // =========================================================================
+  let boilFrame = 0; // updated every 3 frames (10fps) for authentic hand-drawn feel
+
+  function wobbleOffset(seed, amp = 1.4) {
+    const h1 = hash2D(seed, boilFrame, 919);
+    const h2 = hash2D(seed + 53, boilFrame, 433);
+    return [(h1 - 0.5) * 2 * amp, (h2 - 0.5) * 2 * amp];
+  }
+
+  function sketchPolyline(c, pts, closed, amp = 1.3, seedBase = 100) {
+    if (pts.length < 2) return;
+    c.beginPath();
+    const [ox0, oy0] = wobbleOffset(seedBase, amp);
+    c.moveTo(pts[0][0] + ox0, pts[0][1] + oy0);
+    for (let i = 1; i < pts.length; i++) {
+      const [ox, oy] = wobbleOffset(seedBase + i * 7, amp);
+      const px = pts[i][0] + ox;
+      const py = pts[i][1] + oy;
+      if (i < pts.length - 1) {
+        const [nx, ny] = wobbleOffset(seedBase + (i + 1) * 7, amp);
+        const mx = (px + pts[i + 1][0] + nx) * 0.5;
+        const my = (py + pts[i + 1][1] + ny) * 0.5;
+        c.quadraticCurveTo(px, py, mx, my);
+      } else {
+        c.lineTo(px, py);
+      }
+    }
+    if (closed) c.closePath();
+  }
+
+  function drawWatercolorBlob(c, cx, cy, rx, ry, color, alpha, seed = 1, rot = 0) {
+    c.save();
+    c.translate(cx, cy);
+    c.rotate(rot);
+    c.globalAlpha = alpha;
+    const pts = [];
+    const N = 12;
+    for (let i = 0; i < N; i++) {
+      const a = (i / N) * Math.PI * 2;
+      const rMod = 0.86 + hash2D(i, seed, 311) * 0.28;
+      pts.push([Math.cos(a) * rx * rMod, Math.sin(a) * ry * rMod]);
+    }
+    c.beginPath();
+    for (let i = 0; i < N; i++) {
+      const p0 = pts[i];
+      const p1 = pts[(i + 1) % N];
+      const mx = (p0[0] + p1[0]) * 0.5;
+      const my = (p0[1] + p1[1]) * 0.5;
+      if (i === 0) c.moveTo(mx, my);
+      else c.quadraticCurveTo(p0[0], p0[1], mx, my);
+    }
+    c.closePath();
+    c.fillStyle = color;
+    c.fill();
+    c.restore();
+  }
+
+  // =========================================================================
+  // 5. STATIC PROCEDURAL WORLD ELEMENTS (PEBBLES, STONES, GRASS, FLOWERS, LEAVES)
+  // =========================================================================
+  const worldRng = mulberry32(88421);
+
+  // Underwater pebbles
+  const pebbles = [];
+  for (let i = 0; i < 180; i++) {
+    const wx = 80 + worldRng() * 3200;
+    const hw = streamHalfWidth(wx) * 0.88;
+    const wy = streamCenterY(wx) + (worldRng() * 2 - 1) * hw;
+    pebbles.push({
+      x: wx, y: wy,
+      rx: 6 + worldRng() * 14,
+      ry: 4 + worldRng() * 9,
+      rot: worldRng() * Math.PI,
+      hue: worldRng() < 0.5 ? '#7B8A7E' : (worldRng() < 0.5 ? '#9B8E7A' : '#6A7B7D'),
+      alpha: 0.22 + worldRng() * 0.22
+    });
+  }
+
+  // Hero mossy river stones protruding from the stream
+  const riverStones = [
+    { x: 965, y: streamCenterY(965) - 34, rx: 64, ry: 40, rot: -0.08, moss: true, seed: 11 },
+    { x: 1038, y: streamCenterY(1038) - 8, rx: 34, ry: 22, rot: 0.14, moss: false, seed: 17 },
+    { x: 1432, y: streamCenterY(1432) + 36, rx: 72, ry: 44, rot: 0.06, moss: true, seed: 23 },
+    { x: 1365, y: streamCenterY(1365) + 64, rx: 32, ry: 20, rot: -0.18, moss: false, seed: 29 },
+    { x: 1920, y: streamCenterY(1920) - 96, rx: 56, ry: 34, rot: -0.1, moss: true, seed: 37 },
+    { x: 645, y: streamCenterY(645) + 112, rx: 46, ry: 27, rot: 0.12, moss: true, seed: 41 }
+  ];
+
+  // Creekside grass tufts & wildflowers
+  const flora = [];
+  for (let i = 0; i < 140; i++) {
+    const wx = -40 + worldRng() * 3400;
+    const isTop = worldRng() < 0.62;
+    const cy = streamCenterY(wx);
+    const hw = streamHalfWidth(wx);
+    const wy = isTop
+      ? cy - hw - 18 - worldRng() * 240
+      : cy + hw + 18 + worldRng() * 190;
+    const kind = worldRng();
+    flora.push({
+      x: wx, y: wy, isTop,
+      type: kind < 0.55 ? 'grass' : (kind < 0.78 ? 'reed' : (kind < 0.9 ? 'daisy' : 'buttercup')),
+      scale: 0.72 + worldRng() * 0.65,
+      phase: worldRng() * Math.PI * 2,
+      seed: i * 13 + 7
+    });
+  }
+
+  // Drifting fallen leaves on the stream water
+  const waterLeaves = [];
+  const leafPalette = ['#E38748', '#D75E42', '#ECB64B', '#C96D3B', '#E9A243'];
+  for (let i = 0; i < 24; i++) {
+    const startX = 680 + worldRng() * 2050;
+    waterLeaves.push({
+      baseX: startX,
+      yOffset: (worldRng() * 2 - 1) * 115,
+      speed: 52 + worldRng() * 48,
+      scale: 0.68 + worldRng() * 0.55,
+      rot: worldRng() * Math.PI * 2,
+      rotSpeed: (worldRng() - 0.5) * 0.9,
+      color: leafPalette[i % leafPalette.length],
+      shape: i % 2 === 0 ? 'maple' : 'birch',
+      phase: worldRng() * Math.PI * 2
+    });
+  }
+
+  // Two hero leaves gently falling from the sky/overhanging branches onto the water!
+  const fallingLeaves = [
+    { startT: 3.1, landT: 5.55, landX: 1260, landYOff: -48, color: '#E38343', shape: 'maple', scale: 1.05, seed: 501 },
+    { startT: 5.2, landT: 7.45, landX: 1790, landYOff: 38, color: '#ECB64B', shape: 'birch', scale: 0.95, seed: 607 },
+    { startT: 8.1, landT: 10.6, landX: 2420, landYOff: -80, color: '#D76246', shape: 'maple', scale: 0.92, seed: 709 }
+  ];
+
+  // Background storybook trees & bushes (soft distant watercolor silhouettes)
+  const bgTrees = [];
+  for (let i = 0; i < 22; i++) {
+    const wx = -120 + i * 165 + (worldRng() - 0.5) * 60;
+    bgTrees.push({
+      x: wx,
+      y: 120 + worldRng() * 145,
+      r: 85 + worldRng() * 85,
+      hue: i % 3 === 0 ? '#97B17B' : (i % 3 === 1 ? '#B8C482' : '#7D9B6E'),
+      warmTint: wx > 1950 ? 0.45 : 0.12,
+      seed: i * 19 + 3
+    });
+  }
+
+  // Golden floating pollen / sunlit dust motes
+  const motes = [];
+  for (let i = 0; i < 75; i++) {
+    motes.push({
+      x: worldRng() * 3400,
+      y: 60 + worldRng() * 940,
+      r: 1.8 + worldRng() * 3.8,
+      speedX: 8 + worldRng() * 16,
+      speedY: -5 + worldRng() * 10,
+      phase: worldRng() * Math.PI * 2
+    });
+  }
+
+  // =========================================================================
+  // 6. DRAWING MODULES
+  // =========================================================================
+
+  function drawSkyAndMeadow(camX, t) {
+    // Warm sunlit watercolor sky & sunlit meadow wash
+    const skyGrad = ctx.createLinearGradient(0, 0, WIDTH, HEIGHT);
+    const sunProgress = smoothstep(500, 1340, camX);
+    skyGrad.addColorStop(0, lerpColor('#F5ECD8', '#FFF4D4', sunProgress));
+    skyGrad.addColorStop(0.35, lerpColor('#E9E6C9', '#F8EBC3', sunProgress));
+    skyGrad.addColorStop(1, '#D7DFB7');
+    ctx.fillStyle = skyGrad;
+    ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+    // Distant rolling sunlit hills (parallax 0.45)
+    ctx.save();
+    ctx.translate(-camX * 0.42, 0);
+    ctx.beginPath();
+    ctx.moveTo(-200, 360);
+    for (let x = -200; x <= 2800; x += 120) {
+      const y = 265 + Math.sin(x * 0.0024) * 42 + Math.cos(x * 0.005) * 18;
+      ctx.lineTo(x, y);
+    }
+    ctx.lineTo(2800, 600);
+    ctx.lineTo(-200, 600);
+    ctx.closePath();
+    const hillGrad = ctx.createLinearGradient(0, 210, 0, 480);
+    hillGrad.addColorStop(0, 'rgba(167, 191, 136, 0.65)');
+    hillGrad.addColorStop(1, 'rgba(139, 168, 114, 0.35)');
+    ctx.fillStyle = hillGrad;
+    ctx.fill();
+
+    // Soft distant watercolor tree canopies (parallax 0.55)
+    ctx.restore();
+    ctx.save();
+    ctx.translate(-camX * 0.58, 0);
+    for (const tr of bgTrees) {
+      const sx = tr.x;
+      const sway = Math.sin(t * 1.1 + tr.seed) * 4;
+      // Soft trunk hint
+      ctx.strokeStyle = 'rgba(128, 108, 86, 0.25)';
+      ctx.lineWidth = 10;
+      ctx.beginPath();
+      ctx.moveTo(sx, tr.y + tr.r * 0.4);
+      ctx.lineTo(sx - 4, tr.y + tr.r * 1.9);
+      ctx.stroke();
+
+      drawWatercolorBlob(ctx, sx + sway, tr.y, tr.r * 1.15, tr.r * 0.82, tr.hue, 0.42, tr.seed);
+      drawWatercolorBlob(ctx, sx + tr.r * 0.45 + sway, tr.y + 18, tr.r * 0.8, tr.r * 0.65, '#C8CE87', 0.32 + tr.warmTint * 0.25, tr.seed + 5);
+    }
+    ctx.restore();
+
+    // Main grassy creek banks (world space 1:1)
+    ctx.save();
+    ctx.translate(-camX, 0);
+    const bankGrad = ctx.createLinearGradient(0, 240, 0, HEIGHT);
+    bankGrad.addColorStop(0, '#B8C98A');
+    bankGrad.addColorStop(0.45, '#9CB574');
+    bankGrad.addColorStop(1, '#7F9C62');
+    ctx.fillStyle = bankGrad;
+    ctx.fillRect(camX - 40, 310, WIDTH + 80, HEIGHT - 300);
+
+    // Warm watercolor meadow patches
+    for (let wx = 100; wx <= 3300; wx += 260) {
+      if (wx < camX - 350 || wx > camX + WIDTH + 350) continue;
+      const topY = streamCenterY(wx) - streamHalfWidth(wx) - 105;
+      const botY = streamCenterY(wx) + streamHalfWidth(wx) + 95;
+      drawWatercolorBlob(ctx, wx, topY, 175, 78, wx > 2000 ? '#E8DA96' : '#C7D392', 0.34, wx);
+      drawWatercolorBlob(ctx, wx + 80, botY, 165, 74, '#6F8C58', 0.28, wx + 13);
+    }
+    ctx.restore();
+  }
+
+  function drawStream(camX, t, boat, duck) {
+    ctx.save();
+    ctx.translate(-camX, 0);
+
+    const x0 = Math.max(-100, Math.floor((camX - 120) / 40) * 40);
+    const x1 = camX + WIDTH + 160;
+
+    // 1. Soft muddy/sandy bank shadow rim
+    ctx.beginPath();
+    for (let x = x0; x <= x1; x += 40) {
+      const y = streamCenterY(x) - streamHalfWidth(x) - 14;
+      if (x === x0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    for (let x = x1; x >= x0; x -= 40) {
+      const y = streamCenterY(x) + streamHalfWidth(x) + 16;
+      ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(116, 102, 74, 0.36)';
+    ctx.fill();
+
+    // 2. Main translucent watercolor stream body
+    ctx.save();
+    ctx.beginPath();
+    for (let x = x0; x <= x1; x += 32) {
+      const y = streamCenterY(x) - streamHalfWidth(x) + Math.sin(x * 0.015) * 4;
+      if (x === x0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    for (let x = x1; x >= x0; x -= 32) {
+      const y = streamCenterY(x) + streamHalfWidth(x) + Math.cos(x * 0.013) * 4;
+      ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+
+    const waterGrad = ctx.createLinearGradient(camX, 380, camX + WIDTH, 920);
+    waterGrad.addColorStop(0, '#69ACB2');
+    waterGrad.addColorStop(0.45, '#7EC2C4');
+    waterGrad.addColorStop(0.8, '#95D2CB');
+    waterGrad.addColorStop(1, '#BCE2CC');
+    ctx.fillStyle = waterGrad;
+    ctx.fill();
+
+    // Clip inside stream for riverbed pebbles, currents, caustics & reflections
+    ctx.clip();
+
+    // Golden sunlit water pool on the right (wx > 2050)
+    const sunPool = ctx.createRadialGradient(2640, streamCenterY(2640) - 20, 40, 2640, streamCenterY(2640), 580);
+    sunPool.addColorStop(0, 'rgba(255, 244, 186, 0.78)');
+    sunPool.addColorStop(0.45, 'rgba(255, 232, 152, 0.42)');
+    sunPool.addColorStop(1, 'rgba(255, 232, 152, 0)');
+    ctx.fillStyle = sunPool;
+    ctx.fillRect(1950, 250, 1450, 750);
+
+    // Deeper blue-teal watercolor edge along banks
+    ctx.strokeStyle = 'rgba(66, 118, 126, 0.32)';
+    ctx.lineWidth = 26;
+    ctx.stroke();
+
+    // Underwater pebbles
+    for (const p of pebbles) {
+      if (p.x < camX - 40 || p.x > camX + WIDTH + 40) continue;
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rot);
+      ctx.globalAlpha = p.alpha;
+      ctx.fillStyle = p.hue;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, p.rx, p.ry, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // Flowing watercolor current ribbons
+    for (let lane = -3; lane <= 3; lane++) {
+      const offsetFrac = lane * 0.24;
+      ctx.beginPath();
+      let started = false;
+      for (let x = x0; x <= x1; x += 28) {
+        const cy = streamCenterY(x);
+        const hw = streamHalfWidth(x);
+        const wave = Math.sin(x * 0.014 - t * 3.4 + lane * 1.3) * 8;
+        const y = cy + hw * offsetFrac + wave;
+        if (!started) { ctx.moveTo(x, y); started = true; }
+        else ctx.lineTo(x, y);
+      }
+      ctx.strokeStyle = lane % 2 === 0
+        ? 'rgba(255, 252, 238, 0.24)'
+        : 'rgba(68, 134, 144, 0.16)';
+      ctx.lineWidth = lane === 0 ? 5 : 3;
+      ctx.setLineDash([48 + (lane + 4) * 14, 42 + (3 - lane) * 10]);
+      ctx.lineDashOffset = -t * (72 + lane * 9);
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+
+    // Shimmering sunlight sparkles in the sunlit glade & mid-stream
+    for (let i = 0; i < 55; i++) {
+      const sx = 1880 + hash2D(i, 1, 777) * 1350;
+      if (sx < camX - 30 || sx > camX + WIDTH + 30) continue;
+      const sy = streamCenterY(sx) + (hash2D(i, 2, 777) - 0.5) * streamHalfWidth(sx) * 1.5;
+      const twinkle = 0.5 + 0.5 * Math.sin(t * (3.5 + (i % 5)) + i * 2.1);
+      const sunFactor = smoothstep(1880, 2450, sx);
+      if (twinkle > 0.45) {
+        const a = (twinkle - 0.45) * 1.5 * (0.25 + sunFactor * 0.75);
+        const r = (2 + (i % 4) * 1.5) * (0.7 + twinkle * 0.5);
+        ctx.fillStyle = `rgba(255, 252, 224, ${a.toFixed(3)})`;
+        ctx.beginPath();
+        ctx.ellipse(sx, sy, r * 2.4, r * 0.7, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    // Ripples around hero river stones
+    for (const st of riverStones) {
+      if (st.x < camX - 150 || st.x > camX + WIDTH + 150) continue;
+      for (let k = 0; k < 2; k++) {
+        const phase = (t * 0.65 + k * 0.5 + st.seed * 0.1) % 1;
+        ctx.strokeStyle = `rgba(255, 252, 240, ${(1 - phase) * 0.45})`;
+        ctx.lineWidth = 2.2;
+        ctx.beginPath();
+        ctx.ellipse(st.x + phase * 18, st.y + 6, st.rx * (1.05 + phase * 0.42), st.ry * (0.85 + phase * 0.35), 0, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    }
+
+    // Launch splash concentric ripples (at t >= 1.55s)
+    if (t >= 1.55 && t < 4.5) {
+      const dt = t - 1.55;
+      const splashY = streamCenterY(368) - streamHalfWidth(368) + 42;
+      for (let r = 0; r < 3; r++) {
+        const age = dt - r * 0.24;
+        if (age > 0 && age < 2.2) {
+          const prog = age / 2.2;
+          const alpha = (1 - prog) * 0.65;
+          ctx.strokeStyle = `rgba(255, 253, 242, ${alpha.toFixed(3)})`;
+          ctx.lineWidth = lerp(3.2, 1.0, prog);
+          ctx.beginPath();
+          ctx.ellipse(368 + age * 28, splashY + age * 14, 24 + prog * 96, 9 + prog * 38, 0, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+      }
+    }
+
+    // Boat trailing V-wake & gentle concentric rings
+    if (boat.inWater) {
+      for (let w = 0; w < 3; w++) {
+        const phase = (t * 1.15 + w * 0.33) % 1;
+        const alpha = (1 - phase) * 0.42;
+        ctx.strokeStyle = `rgba(255, 253, 242, ${alpha.toFixed(3)})`;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.ellipse(boat.x - phase * 48, boat.y + 12, 34 + phase * 58, 11 + phase * 20, boat.rot * 0.3, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      // Delicate V-wake behind boat
+      ctx.strokeStyle = 'rgba(255, 252, 240, 0.38)';
+      ctx.lineWidth = 2.4;
+      ctx.beginPath();
+      ctx.moveTo(boat.x - 24, boat.y + 8);
+      ctx.quadraticCurveTo(boat.x - 75, boat.y - 10, boat.x - 145, boat.y - 26);
+      ctx.moveTo(boat.x - 24, boat.y + 15);
+      ctx.quadraticCurveTo(boat.x - 75, boat.y + 30, boat.x - 145, boat.y + 42);
+      ctx.stroke();
+    }
+
+    // Duckling wake & underwater webbed feet hint
+    if (duck.visible) {
+      ctx.save();
+      ctx.globalAlpha = duck.alpha;
+      for (let w = 0; w < 2; w++) {
+        const phase = (t * 1.6 + w * 0.5) % 1;
+        ctx.strokeStyle = `rgba(255, 253, 242, ${(1 - phase) * 0.5})`;
+        ctx.lineWidth = 2.2;
+        ctx.beginPath();
+        ctx.ellipse(duck.x - 10 - phase * 38, duck.y + 16, 24 + phase * 44, 9 + phase * 18, 0, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      // Subtle orange webbed feet paddling under translucent water
+      const kick1 = Math.sin(duck.paddlePhase) * 10;
+      const kick2 = Math.sin(duck.paddlePhase + Math.PI) * 10;
+      ctx.fillStyle = 'rgba(232, 126, 68, 0.42)';
+      ctx.beginPath();
+      ctx.ellipse(duck.x - 12 + kick1, duck.y + 24, 10, 5, 0.25, 0, Math.PI * 2);
+      ctx.ellipse(duck.x + 2 + kick2, duck.y + 26, 10, 5, 0.25, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // Ripples where falling leaves land
+    for (const fl of fallingLeaves) {
+      if (t >= fl.landT && t < fl.landT + 1.8) {
+        const prog = (t - fl.landT) / 1.8;
+        const lx = fl.landX + (t - fl.landT) * 58;
+        const ly = streamCenterY(lx) + fl.landYOff;
+        ctx.strokeStyle = `rgba(255, 252, 240, ${(1 - prog) * 0.52})`;
+        ctx.lineWidth = 1.8;
+        ctx.beginPath();
+        ctx.ellipse(lx, ly, 10 + prog * 48, 4 + prog * 18, 0, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    }
+
+    ctx.restore(); // end stream clip
+
+    // Hand-drawn ink/pencil shoreline edge
+    ctx.strokeStyle = 'rgba(72, 86, 64, 0.45)';
+    ctx.lineWidth = 2.4;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    for (let x = x0; x <= x1; x += 48) {
+      const [ox, oy] = wobbleOffset(x + 11, 1.4);
+      const y = streamCenterY(x) - streamHalfWidth(x) + oy;
+      if (x === x0) ctx.moveTo(x + ox, y); else ctx.lineTo(x + ox, y);
+    }
+    ctx.stroke();
+    ctx.beginPath();
+    for (let x = x0; x <= x1; x += 48) {
+      const [ox, oy] = wobbleOffset(x + 99, 1.4);
+      const y = streamCenterY(x) + streamHalfWidth(x) + oy;
+      if (x === x0) ctx.moveTo(x + ox, y); else ctx.lineTo(x + ox, y);
+    }
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  function drawRiverStone(st, camX) {
+    if (st.x < camX - 140 || st.x > camX + WIDTH + 140) return;
+    ctx.save();
+    ctx.translate(st.x - camX, st.y);
+    ctx.rotate(st.rot);
+
+    // Water shadow beneath stone
+    ctx.fillStyle = 'rgba(42, 78, 86, 0.34)';
+    ctx.beginPath();
+    ctx.ellipse(4, 12, st.rx * 1.04, st.ry * 0.85, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Main warm river stone silhouette
+    const g = ctx.createRadialGradient(-st.rx * 0.25, -st.ry * 0.35, 6, 0, 0, st.rx * 1.1);
+    g.addColorStop(0, '#B9AD9C');
+    g.addColorStop(0.55, '#968978');
+    g.addColorStop(1, '#6E6458');
+
+    const pts = [];
+    for (let i = 0; i < 12; i++) {
+      const a = (i / 12) * Math.PI * 2;
+      const rMod = 0.92 + hash2D(i, st.seed, 521) * 0.14;
+      pts.push([Math.cos(a) * st.rx * rMod, Math.sin(a) * st.ry * rMod]);
+    }
+    sketchPolyline(ctx, pts, true, 1.1, st.seed * 31);
+    ctx.fillStyle = g;
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(64, 54, 46, 0.65)';
+    ctx.lineWidth = 2.2;
+    ctx.stroke();
+
+    // Soft mossy cap
+    if (st.moss) {
+      drawWatercolorBlob(ctx, -st.rx * 0.16, -st.ry * 0.28, st.rx * 0.56, st.ry * 0.42, '#7C9E5E', 0.82, st.seed + 2);
+      drawWatercolorBlob(ctx, st.rx * 0.1, -st.ry * 0.38, st.rx * 0.34, st.ry * 0.26, '#A3BE74', 0.72, st.seed + 9);
+    }
+
+    // Warm sunlit highlight rim
+    ctx.strokeStyle = 'rgba(255, 248, 224, 0.45)';
+    ctx.lineWidth = 2.6;
+    ctx.beginPath();
+    ctx.arc(-st.rx * 0.12, -st.ry * 0.08, st.rx * 0.65, Math.PI * 1.12, Math.PI * 1.72);
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  function drawLeafShape(c, shape, scale, color, alpha = 1) {
+    c.save();
+    c.scale(scale, scale);
+    c.globalAlpha = alpha;
+    c.fillStyle = color;
+    c.strokeStyle = 'rgba(84, 48, 32, 0.58)';
+    c.lineWidth = 1.6;
+
+    c.beginPath();
+    if (shape === 'birch') {
+      c.moveTo(-18, 0);
+      c.bezierCurveTo(-8, -14, 10, -12, 20, 0);
+      c.bezierCurveTo(10, 12, -8, 14, -18, 0);
+    } else {
+      // Soft storybook 3-lobed autumn maple leaf
+      c.moveTo(-16, 0);
+      c.quadraticCurveTo(-8, -12, -2, -18);
+      c.quadraticCurveTo(4, -10, 16, -12);
+      c.quadraticCurveTo(11, -3, 21, 0);
+      c.quadraticCurveTo(11, 3, 16, 12);
+      c.quadraticCurveTo(4, 10, -2, 18);
+      c.quadraticCurveTo(-8, 12, -16, 0);
+    }
+    c.closePath();
+    c.fill();
+    c.stroke();
+
+    // Central vein & stem
+    c.beginPath();
+    c.moveTo(-22, 1);
+    c.lineTo(14, 0);
+    c.moveTo(-2, 0); c.lineTo(5, -6);
+    c.moveTo(-2, 0); c.lineTo(5, 6);
+    c.strokeStyle = 'rgba(92, 52, 34, 0.45)';
+    c.lineWidth = 1.2;
+    c.stroke();
+    c.restore();
+  }
+
+  function drawWaterLeaves(camX, t) {
+    ctx.save();
+    ctx.translate(-camX, 0);
+    for (const lf of waterLeaves) {
+      const wx = lf.baseX + t * lf.speed;
+      if (wx < camX - 60 || wx > camX + WIDTH + 60) continue;
+      const hw = streamHalfWidth(wx) * 0.74;
+      const wy = streamCenterY(wx) + clamp(lf.yOffset, -hw, hw) + Math.sin(t * 2.1 + lf.phase) * 7;
+      ctx.save();
+      ctx.translate(wx, wy);
+      ctx.rotate(lf.rot + t * lf.rotSpeed);
+      // Soft water reflection
+      ctx.fillStyle = 'rgba(54, 92, 96, 0.22)';
+      ctx.beginPath();
+      ctx.ellipse(2, 5, 16 * lf.scale, 8 * lf.scale, 0, 0, Math.PI * 2);
+      ctx.fill();
+      drawLeafShape(ctx, lf.shape, lf.scale, lf.color, 0.94);
+      ctx.restore();
+    }
+
+    // Hero falling leaves (drifting down through air, then floating on water!)
+    for (const fl of fallingLeaves) {
+      if (t < fl.startT) continue;
+      let wx, wy, rot, sc = fl.scale;
+      if (t < fl.landT) {
+        const p = (t - fl.startT) / (fl.landT - fl.startT);
+        const targetY = streamCenterY(fl.landX) + fl.landYOff;
+        // Graceful pendulum sway as it falls
+        wx = fl.landX - (1 - p) * 110 + Math.sin(p * Math.PI * 3.2 + fl.seed) * 52 * (1 - p * 0.4);
+        wy = lerp(60, targetY, easeInOutCubic(p));
+        rot = Math.sin(p * Math.PI * 3.2 + fl.seed) * 0.75;
+        sc = fl.scale * (1.15 - p * 0.15);
+      } else {
+        const dt = t - fl.landT;
+        wx = fl.landX + dt * 58;
+        wy = streamCenterY(wx) + fl.landYOff + Math.sin(dt * 2.4) * 5;
+        rot = 0.2 + dt * 0.35;
+      }
+      if (wx < camX - 80 || wx > camX + WIDTH + 80) continue;
+      ctx.save();
+      ctx.translate(wx, wy);
+      ctx.rotate(rot);
+      drawLeafShape(ctx, fl.shape, sc, fl.color, 0.96);
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+
+  // =========================================================================
+  // 7. HERO CHARACTERS: PAPER BOAT, CHILD, DUCKLING, DRAGONFLY
+  // =========================================================================
+
+  function drawPaperBoat(boat, camX, t) {
+    const sx = boat.x - camX;
+    const sy = boat.y;
+    if (sx < -160 || sx > WIDTH + 160) return;
+
+    ctx.save();
+    ctx.translate(sx, sy);
+    ctx.rotate(boat.rot);
+
+    // Water reflection / shadow underneath
+    if (boat.inWater) {
+      ctx.fillStyle = 'rgba(48, 88, 96, 0.26)';
+      ctx.beginPath();
+      ctx.ellipse(2, 16, 52, 12, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Golden sunlight halo when entering the sunbeam
+    if (boat.sunGlow > 0.02) {
+      const g = ctx.createRadialGradient(0, -14, 8, 0, -10, 96);
+      g.addColorStop(0, `rgba(255, 245, 190, ${(boat.sunGlow * 0.58).toFixed(3)})`);
+      g.addColorStop(1, 'rgba(255, 245, 190, 0)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(0, -10, 96, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    const paperLight = lerpColor('#FFFDF6', '#FFF8DC', boat.sunGlow);
+    const paperMid   = lerpColor('#F3EAD8', '#F8E7BF', boat.sunGlow);
+    const paperShade = lerpColor('#DFD3BC', '#E5CFA0', boat.sunGlow);
+    const inkColor   = '#5A4A3C';
+
+    // Back inner fold (darker warm cream)
+    sketchPolyline(ctx, [[-44, -2], [0, -24], [48, -4], [26, 12], [-28, 12]], true, 0.7, 701);
+    ctx.fillStyle = paperShade;
+    ctx.fill();
+
+    // Central triangular origami sail/peak (left half lit, right half subtly shaded)
+    sketchPolyline(ctx, [[-23, -1], [2, -52], [4, 2]], true, 0.7, 711);
+    ctx.fillStyle = paperLight;
+    ctx.fill();
+    ctx.strokeStyle = inkColor;
+    ctx.lineWidth = 2.0;
+    ctx.stroke();
+
+    sketchPolyline(ctx, [[2, -52], [27, -2], [4, 2]], true, 0.7, 721);
+    ctx.fillStyle = paperMid;
+    ctx.fill();
+    ctx.strokeStyle = inkColor;
+    ctx.lineWidth = 2.0;
+    ctx.stroke();
+
+    // Front folded hull (left & right origami facets)
+    sketchPolyline(ctx, [[-56, -6], [2, -10], [4, 15], [-34, 15]], true, 0.8, 731);
+    ctx.fillStyle = paperLight;
+    ctx.fill();
+    ctx.strokeStyle = inkColor;
+    ctx.lineWidth = 2.2;
+    ctx.stroke();
+
+    sketchPolyline(ctx, [[2, -10], [60, -8], [36, 15], [4, 15]], true, 0.8, 741);
+    ctx.fillStyle = paperMid;
+    ctx.fill();
+    ctx.strokeStyle = inkColor;
+    ctx.lineWidth = 2.2;
+    ctx.stroke();
+
+    // Subtle delicate notebook-paper blue ruled line detail on the paper boat!
+    ctx.strokeStyle = 'rgba(132, 166, 198, 0.28)';
+    ctx.lineWidth = 1.1;
+    ctx.beginPath();
+    ctx.moveTo(-38, 2); ctx.lineTo(40, 2);
+    ctx.moveTo(-30, 9); ctx.lineTo(34, 9);
+    ctx.stroke();
+
+    // Tiny sunlit specular glint on the paper peak
+    if (boat.sunGlow > 0.15) {
+      ctx.strokeStyle = `rgba(255, 255, 240, ${(boat.sunGlow * 0.85).toFixed(3)})`;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(2, -52);
+      ctx.lineTo(26, -3);
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+
+  // Child kneeling warmly on the mossy left grassy bank, lowering the paper boat into the stream
+  function drawChild(camX, t, boat) {
+    const baseX = 278 - camX;
+    const baseY = 362; // firmly on the green grassy bank above the shoreline (y ~ 455)
+    if (baseX < -520 || baseX > WIDTH + 200) return;
+
+    ctx.save();
+    ctx.translate(baseX, baseY);
+
+    // Natural gentle breathing & leaning animation
+    const lean = easeInOutCubic(smoothstep(0.0, 1.55, t)) * (1 - smoothstep(2.3, 3.6, t) * 0.65);
+    const breath = Math.sin(t * 2.4) * 2.2;
+    const handPullBack = easeInOutCubic(smoothstep(1.9, 3.3, t));
+    const nudgeMotion = Math.exp(-Math.pow((t - 1.92) / 0.25, 2)) * 12;
+
+    // Soft ground shadow on the mossy grassy bank
+    drawWatercolorBlob(ctx, -22, 86, 114, 28, '#62804D', 0.36, 901);
+
+    // Kneeling legs / corduroy pants (warm olive-brown)
+    ctx.save();
+    sketchPolyline(ctx, [[-122, 70], [-40, 42], [18, 66], [-20, 92], [-108, 94]], true, 1.1, 910);
+    ctx.fillStyle = '#6B725B';
+    ctx.fill();
+    ctx.strokeStyle = '#4B3E34';
+    ctx.lineWidth = 2.4;
+    ctx.stroke();
+
+    // Little brown boot peeking at back
+    sketchPolyline(ctx, [[-138, 64], [-108, 60], [-100, 86], [-140, 88]], true, 0.9, 916);
+    ctx.fillStyle = '#8B5A3C';
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+
+    // Torso in cozy hand-knit mustard sweater
+    ctx.save();
+    ctx.translate(lean * 26, lean * 22 + breath);
+    ctx.rotate(lean * 0.22);
+
+    // Compute natural anatomically-clamped hand target toward the paper boat
+    const bxLocal = (boat.x - camX) - baseX - lean * 26;
+    const byLocal = boat.y - baseY - lean * 22 - breath;
+    const rawHandX = lerp(bxLocal - 16, 62, handPullBack) + nudgeMotion;
+    const rawHandY = lerp(byLocal + 4, 34, handPullBack);
+    // Clamp arm reach from shoulder (0, -18) to max 118px so arms never stretch unnaturally
+    const dxArm = rawHandX - 0;
+    const dyArm = rawHandY - (-18);
+    const armDist = Math.hypot(dxArm, dyArm);
+    const maxReach = 118;
+    const reachScale = armDist > maxReach ? maxReach / armDist : 1;
+    const handX = dxArm * reachScale;
+    const handY = -18 + dyArm * reachScale;
+
+    // Back sleeve & hand
+    ctx.beginPath();
+    ctx.moveTo(22, -26);
+    ctx.quadraticCurveTo(64, -12, handX - 8, handY - 12);
+    ctx.strokeStyle = '#C68834';
+    ctx.lineWidth = 30;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+    ctx.strokeStyle = '#4B3E34';
+    ctx.lineWidth = 2.2;
+    ctx.beginPath();
+    ctx.moveTo(28, -38);
+    ctx.quadraticCurveTo(66, -24, handX - 4, handY - 22);
+    ctx.stroke();
+
+    // Sweater body
+    sketchPolyline(ctx, [[-76, 48], [-58, -56], [34, -52], [44, 48]], true, 1.2, 922);
+    const swGrad = ctx.createLinearGradient(-60, -56, 44, 52);
+    swGrad.addColorStop(0, '#E8AE52');
+    swGrad.addColorStop(0.6, '#D6943B');
+    swGrad.addColorStop(1, '#BC7C2C');
+    ctx.fillStyle = swGrad;
+    ctx.fill();
+    ctx.strokeStyle = '#4B3E34';
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+
+    // Subtle knitted stripes on sweater
+    ctx.strokeStyle = 'rgba(255, 244, 214, 0.45)';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(-64, -10); ctx.lineTo(38, -8);
+    ctx.moveTo(-68, 16); ctx.lineTo(40, 18);
+    ctx.stroke();
+
+    // Cream shirt collar
+    sketchPolyline(ctx, [[-24, -54], [6, -64], [24, -48], [-8, -42]], true, 0.8, 929);
+    ctx.fillStyle = '#FAF2E1';
+    ctx.fill();
+    ctx.strokeStyle = '#4B3E34';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Head (warm three-quarter profile looking fondly at the boat!)
+    ctx.save();
+    const headLook = lerp(0.18, 0.04, smoothstep(2.6, 4.5, t));
+    ctx.translate(4, -98);
+    ctx.rotate(headLook);
+
+    // Warm peach skin face
+    ctx.beginPath();
+    ctx.ellipse(6, 4, 42, 44, 0.06, 0, Math.PI * 2);
+    const faceGrad = ctx.createRadialGradient(18, -4, 6, 4, 4, 48);
+    faceGrad.addColorStop(0, '#FDE1C6');
+    faceGrad.addColorStop(1, '#EFC29F');
+    ctx.fillStyle = faceGrad;
+    ctx.fill();
+    ctx.strokeStyle = '#4B3E34';
+    ctx.lineWidth = 2.3;
+    ctx.stroke();
+
+    // Soft rosy picture-book cheek
+    drawWatercolorBlob(ctx, 26, 16, 13, 9, '#E98D7B', 0.42, 941);
+
+    // Cute gentle eye (blinks softly at t ~ 2.9s)
+    const blink = Math.exp(-Math.pow((t - 2.85) / 0.08, 2));
+    ctx.strokeStyle = '#3E3028';
+    ctx.fillStyle = '#3E3028';
+    ctx.lineWidth = 2.4;
+    if (blink > 0.55) {
+      ctx.beginPath();
+      ctx.arc(28, 3, 5, 0.1 * Math.PI, 0.9 * Math.PI);
+      ctx.stroke();
+    } else {
+      ctx.beginPath();
+      ctx.ellipse(28, 2, 3.6, 4.4, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#FFFDF7';
+      ctx.beginPath();
+      ctx.arc(29.2, 0.5, 1.3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Sweet gentle smile
+    ctx.strokeStyle = '#6B483B';
+    ctx.lineWidth = 2.0;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.arc(31, 20, 8, 0.25 * Math.PI, 0.85 * Math.PI);
+    ctx.stroke();
+
+    // Soft messy chestnut hair with storybook tufts
+    ctx.fillStyle = '#533B2E';
+    ctx.strokeStyle = '#3A281E';
+    ctx.lineWidth = 2.2;
+    ctx.beginPath();
+    ctx.moveTo(-36, 12);
+    ctx.bezierCurveTo(-48, -28, -22, -56, 18, -48);
+    ctx.bezierCurveTo(46, -42, 52, -16, 40, -10);
+    ctx.quadraticCurveTo(22, -24, 6, -16);
+    ctx.quadraticCurveTo(-8, -6, -12, 14);
+    ctx.quadraticCurveTo(-24, 24, -36, 12);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // Cute stray hair tuft on crown
+    ctx.beginPath();
+    ctx.moveTo(-8, -46);
+    ctx.quadraticCurveTo(-2, -62, 12, -55);
+    ctx.stroke();
+
+    // Little ear
+    ctx.fillStyle = '#F6D1B1';
+    ctx.beginPath();
+    ctx.arc(-8, 8, 9, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.restore(); // end head
+
+    // Foreground arm & hand (warm mustard sleeve + cream cuff + gentle fingers)
+    const elbowX = lerp(42, 32, handPullBack);
+    const elbowY = lerp(24, 34, handPullBack);
+
+    // Sleeve path
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.moveTo(-14, -18);
+    ctx.quadraticCurveTo(elbowX, elbowY, handX - 18, handY - 6);
+    ctx.strokeStyle = '#E09F43';
+    ctx.lineWidth = 34;
+    ctx.stroke();
+
+    // Sleeve outline
+    ctx.strokeStyle = '#4B3E34';
+    ctx.lineWidth = 2.3;
+    ctx.beginPath();
+    ctx.moveTo(-10, -34);
+    ctx.quadraticCurveTo(elbowX + 8, elbowY - 14, handX - 14, handY - 21);
+    ctx.moveTo(-18, -2);
+    ctx.quadraticCurveTo(elbowX - 6, elbowY + 14, handX - 24, handY + 9);
+    ctx.stroke();
+
+    // Cream knit cuff
+    ctx.fillStyle = '#FAF2E1';
+    ctx.beginPath();
+    ctx.ellipse(handX - 16, handY - 4, 12, 17, -0.35, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // Gentle child's hand cradling/releasing the paper boat
+    ctx.save();
+    ctx.translate(handX, handY);
+    ctx.rotate(lerp(0.18, -0.25, handPullBack));
+    ctx.fillStyle = '#FAD7B7';
+    ctx.strokeStyle = '#5A4335';
+    ctx.lineWidth = 2.0;
+    ctx.beginPath();
+    ctx.ellipse(4, 2, 16, 11, 0.1, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    // Soft fingers
+    ctx.beginPath();
+    ctx.ellipse(16, 5, 9, 4.5, 0.22, 0, Math.PI * 2);
+    ctx.ellipse(14, -3, 8, 4, -0.1, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+
+    ctx.restore(); // end torso
+    ctx.restore(); // end child
+  }
+
+  // Launch water droplets right when boat touches water (1.55s..2.25s)
+  function drawLaunchSplash(camX, t) {
+    if (t < 1.54 || t > 2.3) return;
+    const dt = t - 1.54;
+    const bx = 368 - camX;
+    const by = streamCenterY(368) - streamHalfWidth(368) + 42;
+    const drops = [
+      { vx: -38, vy: -68, r: 4.2 },
+      { vx: -16, vy: -82, r: 3.5 },
+      { vx: 22,  vy: -76, r: 4.5 },
+      { vx: 46,  vy: -60, r: 3.4 },
+      { vx: 8,   vy: -54, r: 3.0 }
+    ];
+    ctx.save();
+    for (const d of drops) {
+      const x = bx + d.vx * dt;
+      const y = by + d.vy * dt + 145 * dt * dt;
+      const alpha = clamp(1 - dt / 0.72, 0, 1) * 0.85;
+      ctx.fillStyle = `rgba(244, 252, 255, ${alpha.toFixed(3)})`;
+      ctx.beginPath();
+      ctx.arc(x, y, d.r * (1 - dt * 0.4), 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  // Cute fluffy golden duckling!
+  function drawDuckling(duck, camX, t) {
+    if (!duck.visible) return;
+    const sx = duck.x - camX;
+    const sy = duck.y;
+    if (sx < -140 || sx > WIDTH + 140) return;
+
+    ctx.save();
+    ctx.globalAlpha = duck.alpha;
+    ctx.translate(sx, sy);
+    ctx.rotate(duck.rot);
+
+    // Water reflection shadow
+    ctx.fillStyle = 'rgba(54, 92, 96, 0.25)';
+    ctx.beginPath();
+    ctx.ellipse(-2, 16, 36, 10, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Warm golden backlight glow in the sunbeam
+    if (duck.sunGlow > 0.05) {
+      const g = ctx.createRadialGradient(8, -14, 6, 6, -12, 72);
+      g.addColorStop(0, `rgba(255, 242, 178, ${(duck.sunGlow * 0.5).toFixed(3)})`);
+      g.addColorStop(1, 'rgba(255, 242, 178, 0)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(6, -12, 72, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    const bodyGrad = ctx.createRadialGradient(-4, -10, 6, -4, 0, 42);
+    bodyGrad.addColorStop(0, '#FFE47A');
+    bodyGrad.addColorStop(0.65, '#F5C445');
+    bodyGrad.addColorStop(1, '#DFA32E');
+
+    // Plump fluffy body with cute upturned tail
+    ctx.fillStyle = bodyGrad;
+    ctx.strokeStyle = '#6B4D28';
+    ctx.lineWidth = 2.2;
+    ctx.beginPath();
+    ctx.moveTo(-36, -6);
+    ctx.quadraticCurveTo(-46, -18, -32, -16); // cute little tail puff
+    ctx.bezierCurveTo(-18, -22, 12, -18, 26, -4);
+    ctx.bezierCurveTo(32, 10, 16, 19, -4, 19);
+    ctx.bezierCurveTo(-26, 19, -40, 8, -36, -6);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // Fluffy wing (flutters happily when nudging the boat!)
+    ctx.save();
+    ctx.translate(-8, -2);
+    ctx.rotate(-0.18 - duck.wingLift * 0.72);
+    ctx.fillStyle = '#F9D35C';
+    ctx.beginPath();
+    ctx.ellipse(-6, 4, 17, 10, -0.15, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+
+    // Round fuzzy head (bobs gently)
+    ctx.save();
+    ctx.translate(22, -22 + duck.headBob * 0.5);
+
+    const headGrad = ctx.createRadialGradient(4, -6, 4, 0, 0, 24);
+    headGrad.addColorStop(0, '#FFEB8C');
+    headGrad.addColorStop(0.75, '#F6C84C');
+    headGrad.addColorStop(1, '#E2AA34');
+    ctx.fillStyle = headGrad;
+    ctx.beginPath();
+    ctx.arc(0, 0, 20, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // Tiny downy crown tuft
+    ctx.beginPath();
+    ctx.moveTo(-4, -19);
+    ctx.quadraticCurveTo(0, -28, 6, -21);
+    ctx.stroke();
+
+    // Rosy cheek
+    drawWatercolorBlob(ctx, 7, 6, 6.5, 4.5, '#EC8F68', 0.42, 811);
+
+    // Bright shiny eye (happy blink right around t=9.6s)
+    const dBlink = Math.exp(-Math.pow((t - 9.65) / 0.08, 2));
+    ctx.fillStyle = '#2F2218';
+    ctx.strokeStyle = '#2F2218';
+    if (dBlink > 0.55) {
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      ctx.arc(7, -3, 3.8, Math.PI * 1.1, Math.PI * 1.9);
+      ctx.stroke();
+    } else {
+      ctx.beginPath();
+      ctx.arc(7, -3, 3.6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#FFFFFF';
+      ctx.beginPath();
+      ctx.arc(8.2, -4.4, 1.3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Sweet orange beak (opens gently for cute peep/quack!)
+    ctx.fillStyle = '#EA8143';
+    ctx.strokeStyle = '#6B4226';
+    ctx.lineWidth = 1.9;
+    // Upper beak
+    ctx.save();
+    ctx.rotate(-duck.beakOpen * 0.18);
+    ctx.beginPath();
+    ctx.moveTo(16, -2);
+    ctx.quadraticCurveTo(31, -3, 33, 2);
+    ctx.quadraticCurveTo(26, 5, 16, 4);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+    // Lower beak
+    ctx.save();
+    ctx.rotate(duck.beakOpen * 0.22);
+    ctx.beginPath();
+    ctx.moveTo(16, 4);
+    ctx.quadraticCurveTo(27, 5, 30, 7);
+    ctx.quadraticCurveTo(22, 10, 15, 7);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+
+    ctx.restore(); // end head
+    ctx.restore(); // end duckling
+  }
+
+  // Whimsical little turquoise dragonfly hovering near the mossy river stones (3.4s..6.6s)
+  function drawDragonfly(camX, t) {
+    if (t < 3.2 || t > 6.8) return;
+    const p = (t - 3.2) / 3.6;
+    const hover = smoothstep(0.0, 0.25, p) * (1 - smoothstep(0.72, 1.0, p));
+    const wx = lerp(890, 1180, easeInOutCubic(p)) + Math.sin(t * 4.5) * 18;
+    const wy = streamCenterY(980) - 96 - Math.sin(p * Math.PI) * 55 + Math.cos(t * 7.2) * 9;
+    const sx = wx - camX;
+    if (sx < -60 || sx > WIDTH + 60) return;
+
+    ctx.save();
+    ctx.globalAlpha = hover;
+    ctx.translate(sx, wy);
+    ctx.rotate(-0.12 + Math.cos(t * 5) * 0.08);
+
+    // Fluttering translucent wings
+    const flap = Math.sin(t * 68) * 0.35;
+    ctx.fillStyle = 'rgba(245, 252, 255, 0.65)';
+    ctx.strokeStyle = 'rgba(110, 168, 178, 0.55)';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.ellipse(-2, -10, 18, 4.5, -0.35 + flap, 0, Math.PI * 2);
+    ctx.ellipse(-6, -7, 14, 3.8, -0.65 - flap, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // Slender turquoise body
+    ctx.strokeStyle = '#3C8E9A';
+    ctx.lineWidth = 3.2;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(-22, 4);
+    ctx.lineTo(8, -2);
+    ctx.stroke();
+    ctx.fillStyle = '#2E6E78';
+    ctx.beginPath();
+    ctx.arc(10, -2, 3.2, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  // =========================================================================
+  // 8. CREEKSIDE FLORA, OVERHANGING BRANCHES, SUNBEAMS & PAPER FINISH
+  // =========================================================================
+
+  function drawFloraLayer(camX, t, isTopBank) {
+    ctx.save();
+    ctx.translate(-camX, 0);
+    for (const f of flora) {
+      if (f.isTop !== isTopBank) continue;
+      if (f.x < camX - 80 || f.x > camX + WIDTH + 80) continue;
+
+      const sway = Math.sin(t * 1.9 + f.phase) * 6 * f.scale;
+      ctx.save();
+      ctx.translate(f.x, f.y);
+      ctx.scale(f.scale, f.scale);
+
+      if (f.type === 'grass') {
+        ctx.strokeStyle = isTopBank ? '#64834E' : '#537042';
+        ctx.lineWidth = 2.6;
+        ctx.lineCap = 'round';
+        for (let b = -1; b <= 1; b++) {
+          ctx.beginPath();
+          ctx.moveTo(b * 6, 0);
+          ctx.quadraticCurveTo(b * 10 + sway * 0.5, -18, b * 16 + sway, -32 - Math.abs(b) * 4);
+          ctx.stroke();
+        }
+      } else if (f.type === 'reed') {
+        ctx.strokeStyle = '#567547';
+        ctx.lineWidth = 3.0;
+        ctx.lineCap = 'round';
+        for (let b = -1; b <= 1; b++) {
+          ctx.beginPath();
+          ctx.moveTo(b * 7, 0);
+          ctx.quadraticCurveTo(b * 12 + sway * 0.6, -34, b * 18 + sway * 1.2, -62);
+          ctx.stroke();
+        }
+        // Soft cattail / reed head
+        ctx.fillStyle = '#8B6849';
+        ctx.beginPath();
+        ctx.ellipse(sway * 1.1, -54, 4.5, 11, sway * 0.02, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        // Stem
+        ctx.strokeStyle = '#5F824B';
+        ctx.lineWidth = 2.2;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.quadraticCurveTo(sway * 0.5, -16, sway, -30);
+        ctx.stroke();
+        // Wildflower petals (daisy or warm buttercup)
+        const fx = sway, fy = -32;
+        ctx.fillStyle = f.type === 'daisy' ? '#FFFDF6' : '#F8D458';
+        for (let p = 0; p < 5; p++) {
+          const a = (p / 5) * Math.PI * 2 + 0.2;
+          ctx.beginPath();
+          ctx.ellipse(fx + Math.cos(a) * 6, fy + Math.sin(a) * 6, 4.5, 3.2, a, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.fillStyle = f.type === 'daisy' ? '#E9AE3B' : '#D9852E';
+        ctx.beginPath();
+        ctx.arc(fx, fy, 3.2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+
+  function drawOverhangingBranches(camX, t) {
+    // Gentle foreground canopy framing top-left & mid-top (parallax 1.15 for depth)
+    const branches = [
+      { wx: 180, side: 1, hue: '#7B9B63' },
+      { wx: 1320, side: -1, hue: '#B49B54' },
+      { wx: 2180, side: 1, hue: '#D8A24E' }
+    ];
+    ctx.save();
+    for (const br of branches) {
+      const sx = br.wx - camX * 1.12;
+      if (sx < -450 || sx > WIDTH + 450) continue;
+      const sway = Math.sin(t * 1.3 + br.wx * 0.01) * 10;
+
+      ctx.save();
+      ctx.translate(sx, -10);
+      // Organic ink branch
+      ctx.strokeStyle = '#6B5341';
+      ctx.lineWidth = 7;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.quadraticCurveTo(br.side * 120, 65, br.side * 240 + sway, 130);
+      ctx.stroke();
+
+      // Watercolor foliage cluster
+      for (let i = 0; i < 9; i++) {
+        const frac = 0.22 + i * 0.095;
+        const lx = br.side * 240 * frac + sway * frac + Math.sin(i * 2.1) * 28;
+        const ly = 120 * frac + Math.cos(i * 1.7) * 26;
+        drawWatercolorBlob(ctx, lx, ly, 36, 22, i % 3 === 0 ? '#E3A44B' : br.hue, 0.72, i + br.wx, br.side * 0.3);
+      }
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+
+  function drawSunbeamsAndMotes(camX, t) {
+    // Warm golden diagonal sunbeams pouring into the right-hand glade!
+    const sunStrength = smoothstep(4.5, 9.8, t) * 0.85 + 0.15;
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+
+    const rays = [
+      { wx: 2220, w: 220, a: 0.20 },
+      { wx: 2520, w: 320, a: 0.28 },
+      { wx: 2850, w: 280, a: 0.24 },
+      { wx: 1580, w: 160, a: 0.10 }
+    ];
+
+    for (let i = 0; i < rays.length; i++) {
+      const r = rays[i];
+      const sx = r.wx - camX;
+      if (sx < -500 || sx > WIDTH + 500) continue;
+      const pulse = 0.88 + 0.12 * Math.sin(t * 1.4 + i * 1.7);
+      const grad = ctx.createLinearGradient(sx + 260, -40, sx - 240, HEIGHT);
+      grad.addColorStop(0, `rgba(255, 240, 178, ${(r.a * sunStrength * pulse).toFixed(3)})`);
+      grad.addColorStop(0.55, `rgba(255, 226, 146, ${(r.a * 0.6 * sunStrength * pulse).toFixed(3)})`);
+      grad.addColorStop(1, 'rgba(255, 226, 146, 0)');
+
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.moveTo(sx + 160 - r.w * 0.4, -40);
+      ctx.lineTo(sx + 160 + r.w * 0.6, -40);
+      ctx.lineTo(sx - 220 + r.w * 0.9, HEIGHT + 40);
+      ctx.lineTo(sx - 220 - r.w * 0.5, HEIGHT + 40);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    // Radiant top-right afternoon sun bloom during finale
+    const finaleGlow = smoothstep(7.2, 11.4, t);
+    if (finaleGlow > 0.01) {
+      const sg = ctx.createRadialGradient(WIDTH * 0.88, HEIGHT * 0.12, 20, WIDTH * 0.88, HEIGHT * 0.12, 820);
+      sg.addColorStop(0, `rgba(255, 248, 208, ${(finaleGlow * 0.55).toFixed(3)})`);
+      sg.addColorStop(0.45, `rgba(255, 232, 162, ${(finaleGlow * 0.24).toFixed(3)})`);
+      sg.addColorStop(1, 'rgba(255, 232, 162, 0)');
+      ctx.fillStyle = sg;
+      ctx.fillRect(0, 0, WIDTH, HEIGHT);
+    }
+
+    // Drifting golden sunlit dust/pollen motes
+    for (const m of motes) {
+      const wx = (m.x + t * m.speedX) % 3400;
+      const sx = wx - camX;
+      if (sx < -20 || sx > WIDTH + 20) continue;
+      const sy = m.y + Math.sin(t * 1.4 + m.phase) * 18 + t * m.speedY;
+      const sunBoost = smoothstep(1650, 2400, wx);
+      const twinkle = 0.45 + 0.55 * Math.sin(t * 2.8 + m.phase);
+      const alpha = (0.16 + sunBoost * 0.55) * twinkle;
+      ctx.fillStyle = `rgba(255, 248, 204, ${alpha.toFixed(3)})`;
+      ctx.beginPath();
+      ctx.arc(sx, sy, m.r * (0.85 + sunBoost * 0.4), 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  function applyStorybookPaperFinish(t) {
+    // Multiply cold-press watercolor paper grain across entire illustration
+    ctx.save();
+    ctx.globalCompositeOperation = 'multiply';
+    ctx.globalAlpha = 0.72;
+    ctx.drawImage(paperCanvas, 0, 0);
+    ctx.restore();
+
+    // Soft warm storybook border vignette
+    const vig = ctx.createRadialGradient(WIDTH * 0.5, HEIGHT * 0.5, HEIGHT * 0.38, WIDTH * 0.5, HEIGHT * 0.5, WIDTH * 0.65);
+    vig.addColorStop(0, 'rgba(250, 243, 227, 0)');
+    vig.addColorStop(0.84, 'rgba(196, 174, 140, 0.08)');
+    vig.addColorStop(1, 'rgba(128, 102, 74, 0.26)');
+    ctx.fillStyle = vig;
+    ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+    // Gentle warm cream fade-in (0.0 - 0.55s) & golden fade-out (11.9 - 12.5s)
+    const fadeIn = 1 - smoothstep(0.0, 0.55, t);
+    const fadeOut = smoothstep(11.85, 12.5, t);
+    const veil = Math.max(fadeIn, fadeOut);
+    if (veil > 0.002) {
+      ctx.fillStyle = `rgba(252, 245, 228, ${veil.toFixed(3)})`;
+      ctx.fillRect(0, 0, WIDTH, HEIGHT);
+    }
+  }
+
+  function lerpColor(hexA, hexB, t) {
+    t = clamp(t, 0, 1);
+    const a = parseInt(hexA.slice(1), 16);
+    const b = parseInt(hexB.slice(1), 16);
+    const r = Math.round(lerp((a >> 16) & 255, (b >> 16) & 255, t));
+    const g = Math.round(lerp((a >> 8) & 255, (b >> 8) & 255, t));
+    const bl = Math.round(lerp(a & 255, b & 255, t));
+    return `rgb(${r},${g},${bl})`;
+  }
+
+  // =========================================================================
+  // 9. MAIN DETERMINISTIC FRAME RENDERER
+  // =========================================================================
+  function renderFrame(frameIndex) {
+    const f = clamp(frameIndex, 0, TOTAL_FRAMES - 1);
+    const t = f / FPS;
+    boilFrame = Math.floor(f / 3); // 10fps gentle hand-drawn line boil
+
+    const camX = getCameraX(t);
+    const boat = getBoatState(t);
+    const duck = getDuckState(t, boat);
+
+    // 1. Sky, rolling watercolor hills, distant trees & grassy banks
+    drawSkyAndMeadow(camX, t);
+
+    // 2. Top-bank grass, reeds & wildflowers
+    drawFloraLayer(camX, t, true);
+
+    // 3. Stream water, riverbed pebbles, flowing currents, ripples & wakes
+    drawStream(camX, t, boat, duck);
+
+    // 4. Child kneeling on the upper-left mossy bank (drawn before boat if boat is in front)
+    drawChild(camX, t, boat);
+
+    // 5. Drifting fallen leaves on the stream
+    drawWaterLeaves(camX, t);
+
+    // 6. Depth-sorted water actors: river stones, duckling, paper boat
+    const actors = [];
+    for (const st of riverStones) {
+      actors.push({ y: st.y, draw: () => drawRiverStone(st, camX) });
+    }
+    if (duck.visible) {
+      actors.push({ y: duck.y + 4, draw: () => drawDuckling(duck, camX, t) });
+    }
+    actors.push({ y: boat.y + 6, draw: () => drawPaperBoat(boat, camX, t) });
+    actors.sort((a, b) => a.y - b.y);
+    for (const a of actors) a.draw();
+
+    // 7. Launch water splash droplets & hovering dragonfly
+    drawLaunchSplash(camX, t);
+    drawDragonfly(camX, t);
+
+    // 8. Foreground bottom-bank grass, reeds & wildflowers
+    drawFloraLayer(camX, t, false);
+
+    // 9. Overhanging foreground tree branches
+    drawOverhangingBranches(camX, t);
+
+    // 10. Warm afternoon sunbeams & drifting golden pollen motes
+    drawSunbeamsAndMotes(camX, t);
+
+    // 11. Cold-press watercolor paper grain, vignette & fade
+    applyStorybookPaperFinish(t);
+  }
+
+  // Expose deterministic hooks for headless frame capture
+  window.ANIM_META = { width: WIDTH, height: HEIGHT, fps: FPS, duration: DURATION, totalFrames: TOTAL_FRAMES };
+  window.renderFrame = renderFrame;
+
+  // Interactive browser playback when opened directly (disabled when ?headless=1)
+  if (!location.search.includes('headless=1')) {
+    let start = null;
+    function loop(ts) {
+      if (!start) start = ts;
+      const elapsed = ((ts - start) / 1000) % DURATION;
+      renderFrame(Math.floor(elapsed * FPS));
+      requestAnimationFrame(loop);
+    }
+    requestAnimationFrame(loop);
+  } else {
+    renderFrame(0);
+  }
+})();
+</script>
+</body>
+</html>

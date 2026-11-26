@@ -2,6 +2,10 @@
 
 用实际作品比较 Codex 和 AGY 的二维绘画、三维渲染和视频动效。每轮实验保留源码、复现说明和原始输出。
 
+## 2026 年 11 月 26 日 · 纸船动画
+
+[Codex 成片](paper-boat-animation/codex/paper-boat.mp4) · [Codex 源码与说明](paper-boat-animation/codex/) · [AGY 成片](paper-boat-animation/agy/paper_boat_story.mp4) · [AGY 源码与配乐](paper-boat-animation/agy/)
+
 ## 2026 年 11 月 26 日 · 智能爆炸演示
 
 Codex 的《智能爆炸》与 AGY 的《EVENT HORIZON》。收录互动网页、PowerPoint、源码及美术资产。
