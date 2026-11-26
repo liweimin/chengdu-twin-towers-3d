@@ -2,6 +2,12 @@
 
 用实际作品比较 Codex 和 AGY 的二维绘画、三维渲染和视频动效。每轮实验保留源码、复现说明和原始输出。
 
+## 2026 年 11 月 26 日 · 《蚀影》光剑对决
+
+Codex 用 Python 逐帧绘制的 15 秒短片。火柴人版和日漫版共用对决编排及原创配乐。日漫版重绘角色，加入分屏特写与漫画冲击帧。
+
+[两版短片、源码与复现说明](eclipse-duel/README.md) · [火柴人版 MP4](eclipse-duel/codex/eclipse_sith_vs_jedi.mp4) · [日漫版 MP4](eclipse-duel/codex/eclipse_sith_vs_jedi_anime.mp4)
+
 ## 2026 年 11 月 26 日 · 3D 浮空岛交互场景
 
 ![3D 浮空岛对照（左：Codex《云屿》，右：AGY《浮云秘境》；上：白昼，下：夜晚）](floating-island/previews/side-by-side.jpg)
