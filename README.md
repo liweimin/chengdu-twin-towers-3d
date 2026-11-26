@@ -2,6 +2,14 @@
 
 用实际作品比较 Codex 和 AGY 的二维绘画、三维渲染和视频动效。每轮实验保留源码、复现说明和原始输出。
 
+## 2026 年 11 月 26 日 · 3D 浮空岛交互场景
+
+![3D 浮空岛对照（左：Codex《云屿》，右：AGY《浮云秘境》；上：白昼，下：夜晚）](floating-island/previews/side-by-side.jpg)
+
+Codex 的《云屿》与 AGY 的《浮云秘境》，均使用 Three.js 实时构建低多边形 3D 浮空岛、瀑布、小屋与云海，支持昼夜切换与自由旋转缩放，并打包为可离线双击打开的单文件 HTML。
+
+[两套网页、截图与源码](floating-island/README.md) · [Codex 单文件网页](floating-island/codex/index.html) · [AGY 单文件网页](floating-island/agy/floating-island.html)
+
 ## 2026 年 11 月 26 日 · 纸船动画
 
 ![纸船动画关键帧对照（上：Codex，下：AGY）](paper-boat-animation/previews/frame-comparison.jpg)
