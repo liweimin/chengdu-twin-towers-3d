@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#050812">
+  <meta name="description" content="引力余晖是一件可以用指尖扰动的粒子宇宙。">
+  <title>引力余晖 · Afterlight</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="vendor/p5.min.js" defer></script>
+  <script src="sketch.js" defer></script>
+</head>
+<body>
+  <main class="observatory">
+    <div id="sky" class="sky" aria-hidden="true"></div>
+
+    <header class="masthead frame">
+      <div class="identity">
+        <span class="observatory-mark" aria-hidden="true"><i></i></span>
+        <span lang="en">DEEP FIELD</span>
+        <span class="identity-caption">深空观测站</span>
+      </div>
+      <div class="utilities">
+        <button id="pause" class="icon-button" type="button" aria-label="暂停星尘" title="暂停 / 继续（空格）" aria-pressed="false">
+          <span class="pause-icon" aria-hidden="true"></span>
+        </button>
+        <button id="fullscreen" class="icon-button" type="button" aria-label="进入全屏" title="切换全屏（F）" aria-pressed="false">
+          <span class="fullscreen-icon" aria-hidden="true"></span>
+        </button>
+      </div>
+    </header>
+
+    <section class="introduction frame" aria-labelledby="work-title">
+      <p class="medium">交互式粒子宇宙</p>
+      <h1 id="work-title"><span class="title-latin" lang="en">After<i>light.</i></span><span class="title-chinese">引力余晖</span></h1>
+      <p class="intro-copy">在星光抵达之前，<br>让引力在指尖留下回声。</p>
+    </section>
+
+    <p id="sketch-error" class="sketch-error" role="status" hidden>星空未能载入。请确认项目文件齐全后重新打开。</p>
+
+    <footer class="instrument-panel frame">
+      <div class="gestures" aria-label="玩法">
+        <span class="gesture"><i class="move-symbol" aria-hidden="true"></i><span><b>移动</b> 扰动星尘</span></span>
+        <span class="gesture"><i class="burst-symbol" aria-hidden="true">✧</i><span><b>点击</b> 触发星爆</span></span>
+      </div>
+      <div class="spectrum" role="group" aria-label="星云光谱">
+        <span class="spectrum-label">光谱</span>
+        <button class="swatch swatch-amber" type="button" data-palette="amber" aria-label="琥珀蓝" aria-pressed="true" title="琥珀蓝"></button>
+        <button class="swatch swatch-jade" type="button" data-palette="jade" aria-label="极光绿" aria-pressed="false" title="极光绿"></button>
+        <button class="swatch swatch-rose" type="button" data-palette="rose" aria-label="玫瑰紫" aria-pressed="false" title="玫瑰紫"></button>
+      </div>
+    </footer>
+  </main>
+</body>
+</html>

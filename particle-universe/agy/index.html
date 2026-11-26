@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>AETHERIA · 交互式粒子宇宙</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main id="canvas-root" aria-label="AETHERIA 交互式粒子宇宙画布"></main>
+
+  <!-- Opening poetic title overlay: gracefully fades out so pure canvas remains -->
+  <header id="intro-overlay" class="intro-overlay" aria-hidden="true">
+    <div class="intro-inner">
+      <p class="intro-eyebrow">INTERACTIVE GENERATIVE COSMOS</p>
+      <h1 class="intro-title">AETHERIA</h1>
+      <p class="intro-subtitle">移动光标牵引星流 · 单击绽放超新星 · 长按凝聚引力奇点</p>
+    </div>
+  </header>
+
+  <!-- Minimal whisper HUD (bottom-left palette label + bottom-right subtle glass controls) -->
+  <div id="mode-toast" class="mode-toast" aria-live="polite"></div>
+
+  <aside id="hud" class="hud hud-interactive" aria-label="宇宙艺术控制">
+    <div class="hud-group" role="group" aria-label="星云色系">
+      <button class="palette-dot active" data-palette="0" title="船底座极光 (1)" aria-label="船底座极光" style="--swatch-a:#38e8ff;--swatch-b:#f5b971;--swatch-c:#c86bfa;"></button>
+      <button class="palette-dot" data-palette="1" title="日冕鎏金 (2)" aria-label="日冕鎏金" style="--swatch-a:#ffd479;--swatch-b:#ff7e5f;--swatch-c:#7c5cff;"></button>
+      <button class="palette-dot" data-palette="2" title="深渊幽蓝 (3)" aria-label="深渊幽蓝" style="--swatch-a:#5efce8;--swatch-b:#736efe;--swatch-c:#d8f3ff;"></button>
+      <button class="palette-dot" data-palette="3" title="玫瑰星云 (4)" aria-label="玫瑰星云" style="--swatch-a:#ff7eb3;--swatch-b:#ffd3a5;--swatch-c:#7b8cff;"></button>
+    </div>
+
+    <span class="hud-divider" aria-hidden="true"></span>
+
+    <div class="hud-group" role="group" aria-label="宇宙控制">
+      <button id="btn-mode" class="hud-btn" title="切换星流形态 (M)" aria-label="切换星流形态">
+        <span id="btn-mode-label">星河漫流</span>
+      </button>
+      <button id="btn-pause" class="hud-btn hud-icon" title="暂停 / 继续 (Space)" aria-label="暂停或继续">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true">
+          <rect x="6" y="5" width="4" height="14" rx="1"></rect>
+          <rect x="14" y="5" width="4" height="14" rx="1"></rect>
+        </svg>
+      </button>
+      <button id="btn-capture" class="hud-btn hud-icon" title="保存当前宇宙画作 (S)" aria-label="保存当前画作">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+          <circle cx="12" cy="13" r="4"></circle>
+        </svg>
+      </button>
+      <button id="btn-help" class="hud-btn hud-icon" title="交互提示 (H)" aria-label="显示交互提示">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="9"></circle>
+          <path d="M12 16v-4"></path>
+          <circle cx="12" cy="8" r="0.6" fill="currentColor"></circle>
+        </svg>
+      </button>
+    </div>
+  </aside>
+
+  <!-- Minimal floating gesture guide (toggled via H or info icon) -->
+  <section id="help-card" class="help-card hud-interactive" aria-hidden="true">
+    <div class="help-title">AETHERIA · 宇宙交互指南</div>
+    <ul class="help-list">
+      <li><span>移动光标</span><em>牵引引力流场，编织光轨与星网</em></li>
+      <li><span>单击画布</span><em>触发超新星脉冲与星尘爆发</em></li>
+      <li><span>长按并释放</span><em>凝聚黑洞奇点，释放螺旋星爆</em></li>
+      <li><span>1 - 4 / C</span><em>切换四种天文星云色系</em></li>
+      <li><span>M</span><em>切换星流形态（漫流 / 旋涡 / 谐波）</em></li>
+      <li><span>Space / S</span><em>凝固时光 / 保存高清画作</em></li>
+    </ul>
+  </section>
+
+  <script src="lib/p5.min.js"></script>
+  <script src="js/palettes.js"></script>
+  <script src="js/entities.js"></script>
+  <script src="js/sketch.js"></script>
+</body>
+</html>
