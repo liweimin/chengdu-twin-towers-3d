@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>EVENT HORIZON — 智能爆炸与人类之后的未来</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Noto+Sans+SC:wght@300;400;500;700;900&family=Noto+Serif+SC:wght@500;700;900&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body data-theme="dark" data-slide="0">
+  <!-- Persistent Generative Canvas Backdrop -->
+  <canvas id="bg-canvas" aria-hidden="true"></canvas>
+  <div class="vignette" aria-hidden="true"></div>
+  <div class="film-grain" aria-hidden="true"></div>
+
+  <!-- Top Telemetry HUD -->
+  <header class="hud-top">
+    <div class="hud-brand">
+      <span class="pulse-dot"></span>
+      <span class="mono">EVENT HORIZON // 2026</span>
+    </div>
+    <div class="hud-phase mono" id="hud-phase">PHASE 00 · PROLOGUE</div>
+    <div class="hud-controls">
+      <button class="hud-btn mono" id="btn-audio" title="切换环境音效 (M)">
+        <span class="audio-icon" id="audio-icon">♪ OFF</span>
+      </button>
+      <button class="hud-btn mono" id="btn-notes" title="演讲者备注 (N)">NOTES</button>
+      <button class="hud-btn mono" id="btn-overview" title="幻灯片总览 (G)">GRID</button>
+      <button class="hud-btn mono" id="btn-fullscreen" title="全屏模式 (F)">FULL</button>
+    </div>
+  </header>
+
+  <!-- Progress Hairline -->
+  <div class="progress-track">
+    <div class="progress-bar" id="progress-bar"></div>
+  </div>
+
+  <!-- Main Deck Stage -->
+  <main class="deck" id="deck">
+
+    <!-- SLIDE 01: THE EVENT HORIZON -->
+    <section class="slide active" data-index="0" data-theme="dark" data-phase="PHASE 00 · PROLOGUE" data-title="智能爆炸：序幕" data-notes="开场保持 3 秒沉默。不要用常规商业汇报的口吻——今天不是在聊“AI 如何帮公司降本增效 15%”，而是在聊人类文明即将撞上的垂直奇点。">
+      <div class="slide-inner layout-hero">
+        <div class="eyebrow mono reveal" style="--d:0">INTELLIGENCE EXPLOSION · UNANCHORED BRIEFING</div>
+        <h1 class="hero-title reveal" style="--d:1">
+          <span class="serif-accent">智能爆炸</span>
+          <span class="hero-subline">人类历史上最后一次线性时刻</span>
+        </h1>
+        <p class="hero-lead reveal" style="--d:2">
+          忘记「提高办公效率」。忘记温和的十年预测。<br />
+          我们正站在一条<strong>垂直线</strong>的底部，而一切即将失控般地疯狂起来。
+        </p>
+        <div class="hero-meta reveal" style="--d:3">
+          <div class="meta-chip">
+            <span class="meta-label mono">ASSUMPTION</span>
+            <span class="meta-val">零锚定偏见 · 第一性原理</span>
+          </div>
+          <div class="meta-chip">
+            <span class="meta-label mono">HORIZON</span>
+            <span class="meta-val">2026 — ∞</span>
+          </div>
+          <div class="meta-chip">
+            <span class="meta-label mono">NAVIGATION</span>
+            <span class="meta-val">← → / SPACE / 点击交互</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SLIDE 02: THE LINEAR TRAP -->
+    <section class="slide" data-index="1" data-theme="dark" data-phase="PHASE 01 · COGNITIVE BLINDSPOT" data-title="线性陷阱与锚定偏见" data-notes="拖动底部的滑块，让观众亲眼看到同一条超指数曲线在不同时间节点上的欺骗性：在拐点之前，它看起来永远像一条平缓的直线。">
+      <div class="slide-inner layout-split">
+        <div class="col-text">
+          <div class="eyebrow mono reveal" style="--d:0">02 // THE LINEAR TRAP</div>
+          <h2 class="slide-title reveal" style="--d:1">人类的大脑<br />天生无法理解<span class="accent-warm">垂直线</span></h2>
+          <p class="body-copy reveal" style="--d:2">
+            过去 30 万年，智人在非洲草原上进化出了一套极其顽固的预测算法：<strong>明天大概率和昨天差不多。</strong>
+          </p>
+          <p class="body-copy reveal" style="--d:3">
+            这就是为什么最聪明的经济学家和专家，在面对指数级相变时依然会给出「温和、体面、安全」的预测——因为说出真相听起来太像疯子。
+          </p>
+          <div class="callout-box reveal" style="--d:4">
+            <div class="mono callout-tag">PERCEPTION GAP</div>
+            <p id="trap-caption">在拐点之前，超指数曲线看起来和直线毫无区别。等你察觉到坡度变陡时，它已经垂直升空。</p>
+          </div>
+        </div>
+        <div class="col-visual reveal" style="--d:2">
+          <div class="viz-card">
+            <div class="viz-header">
+              <span class="mono">CAPABILITY TRAJECTORY // LINEAR vs. SUPER-EXPONENTIAL</span>
+              <span class="mono viz-badge" id="trap-year-badge">T = 2026</span>
+            </div>
+            <svg id="svg-linear-trap" viewBox="0 0 600 360" class="viz-svg">
+              <defs>
+                <linearGradient id="expGrad" x1="0" y1="1" x2="1" y2="0">
+                  <stop offset="0%" stop-color="#38E8FF" />
+                  <stop offset="60%" stop-color="#FFB347" />
+                  <stop offset="100%" stop-color="#FF3B1F" />
+                </linearGradient>
+                <filter id="glowWarm" x="-20%" y="-20%" width="140%" height="140%">
+                  <feGaussianBlur stdDeviation="4" result="blur" />
+                  <feMerge>
+                    <feMergeNode in="blur" />
+                    <feMergeNode in="SourceGraphic" />
+                  </feMerge>
+                </filter>
+              </defs>
+              <!-- Grid -->
+              <g class="svg-grid" stroke="rgba(255,255,255,0.07)" stroke-width="1">
+                <line x1="50" y1="40" x2="50" y2="310" />
+                <line x1="50" y1="310" x2="560" y2="310" />
+                <line x1="50" y1="242" x2="560" y2="242" stroke-dasharray="3 5" />
+                <line x1="50" y1="175" x2="560" y2="175" stroke-dasharray="3 5" />
+                <line x1="50" y1="107" x2="560" y2="107" stroke-dasharray="3 5" />
+              </g>
+              <!-- Human linear expectation -->
+              <path id="trap-linear-path" d="M 50 305 L 550 235" fill="none" stroke="rgba(255,255,255,0.35)" stroke-width="2" stroke-dasharray="6 6" />
+              <text x="115" y="274" fill="rgba(255,255,255,0.55)" font-size="11" class="mono">人类直觉 (线性外推)</text>
+
+              <!-- Super-exponential reality -->
+              <path id="trap-exp-path" d="M 50 306 C 210 304, 340 295, 420 235 C 475 190, 505 110, 525 28" fill="none" stroke="url(#expGrad)" stroke-width="3.5" filter="url(#glowWarm)" />
+              <text x="355" y="65" fill="#FF6B35" font-size="12" font-weight="700" class="mono">真实相变 (递归智能爆炸)</text>
+
+              <!-- Interactive Marker -->
+              <line id="trap-cursor-line" x1="320" y1="40" x2="320" y2="310" stroke="rgba(255,179,71,0.4)" stroke-width="1" stroke-dasharray="3 3" />
+              <circle id="trap-dot-linear" cx="320" cy="267" r="5" fill="#ffffff" opacity="0.6" />
+              <circle id="trap-dot-exp" cx="320" cy="276" r="7" fill="#FF5A1F" filter="url(#glowWarm)" />
+              <text id="trap-gap-label" x="332" y="255" fill="#FFB347" font-size="11" class="mono">Δ = 1.4×</text>
+
+              <!-- Axis labels -->
+              <text x="50" y="335" fill="rgba(255,255,255,0.45)" font-size="11" class="mono">2020</text>
+              <text x="200" y="335" fill="rgba(255,255,255,0.45)" font-size="11" class="mono">2024</text>
+              <text x="350" y="335" fill="rgba(255,255,255,0.45)" font-size="11" class="mono">2027</text>
+              <text x="500" y="335" fill="#FF5A1F" font-size="11" class="mono">SINGULARITY</text>
+            </svg>
+            <div class="viz-control-row">
+              <span class="mono control-label">拖动观察视角</span>
+              <input type="range" id="trap-slider" min="15" max="96" value="58" class="custom-slider" />
+              <span class="mono control-val" id="trap-mult-val">差距: 1.8×</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SLIDE 03: RECURSIVE SELF-IMPROVEMENT -->
+    <section class="slide" data-index="2" data-theme="dark" data-phase="PHASE 02 · IGNITION" data-title="递归自我改进" data-notes="点击“点燃递归循环”按钮！让观众直观感受研发周期从 18 个月坍缩到 48 小时甚至实时迭代的失控感。">
+      <div class="slide-inner layout-split">
+        <div class="col-text">
+          <div class="eyebrow mono reveal" style="--d:0">03 // RECURSIVE SELF-IMPROVEMENT</div>
+          <h2 class="slide-title reveal" style="--d:1">当 AI 开始<br /><span class="accent-cyan">亲自设计下一代 AI</span></h2>
+          <p class="body-copy reveal" style="--d:2">
+            历史上所有技术——蒸汽机、电力、互联网——都依赖<strong>缓慢的生物大脑</strong>去迭代下一代。
+          </p>
+          <p class="body-copy reveal" style="--d:3">
+            但人工智能是唯一一种<strong>可以直接优化自身研发过程</strong>的技术。一旦 AI 能够自主编写内核代码、设计新架构、合成训练数据并指导芯片布局，人类研究者就从「引擎」变成了「瓶颈」。
+          </p>
+          <div class="ignite-panel reveal" style="--d:4">
+            <button id="btn-ignite" class="action-btn">
+              <span class="btn-glow"></span>
+              <span class="mono" id="ignite-btn-text">⚡ 启动递归点火 (IGNITE LOOP)</span>
+            </button>
+            <div class="ignite-readout">
+              <div>
+                <span class="mono readout-label">迭代周期</span>
+                <span class="readout-num accent-warm" id="loop-cycle">18 个月</span>
+              </div>
+              <div>
+                <span class="mono readout-label">算法效率增益</span>
+                <span class="readout-num accent-cyan" id="loop-gain">1.0×</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="col-visual reveal" style="--d:2">
+          <div class="viz-card loop-card">
+            <div class="viz-header">
+              <span class="mono">AUTOCATALYTIC INTELLIGENCE LOOP</span>
+              <span class="mono viz-badge" id="loop-status">STATUS: HUMAN-PACED</span>
+            </div>
+            <svg viewBox="0 0 500 400" class="viz-svg" id="svg-loop">
+              <defs>
+                <linearGradient id="loopStroke" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stop-color="#38E8FF" />
+                  <stop offset="50%" stop-color="#FF5A1F" />
+                  <stop offset="100%" stop-color="#FFB347" />
+                </linearGradient>
+              </defs>
+              <!-- Outer Orbital Track -->
+              <circle cx="250" cy="200" r="130" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="2" />
+              <circle id="loop-ring-spin" cx="250" cy="200" r="130" fill="none" stroke="url(#loopStroke)" stroke-width="3.5" stroke-dasharray="140 60 40 60" stroke-linecap="round" />
+              <circle id="loop-ring-inner" cx="250" cy="200" r="88" fill="none" stroke="rgba(56,232,255,0.25)" stroke-width="1.5" stroke-dasharray="12 18" />
+
+              <!-- Center Core -->
+              <circle id="loop-core" cx="250" cy="200" r="46" fill="rgba(255,90,31,0.12)" stroke="#FF5A1F" stroke-width="1.5" />
+              <text x="250" y="195" text-anchor="middle" fill="#F4F2EC" font-size="13" font-weight="700" class="mono" id="loop-core-label">GEN N</text>
+              <text x="250" y="214" text-anchor="middle" fill="#FFB347" font-size="10" class="mono" id="loop-core-sub">BASELINE</text>
+
+              <!-- 4 Nodes -->
+              <g class="loop-node" transform="translate(250, 70)">
+                <rect x="-78" y="-22" width="156" height="44" rx="4" fill="#0B0D12" stroke="rgba(255,255,255,0.2)" />
+                <text x="0" y="-2" text-anchor="middle" fill="#F4F2EC" font-size="12" font-weight="700">自动化 AI 科研</text>
+                <text x="0" y="13" text-anchor="middle" fill="#38E8FF" font-size="9" class="mono">AUTO-RESEARCH</text>
+              </g>
+              <g class="loop-node" transform="translate(380, 200)">
+                <rect x="-74" y="-22" width="148" height="44" rx="4" fill="#0B0D12" stroke="rgba(255,255,255,0.2)" />
+                <text x="0" y="-2" text-anchor="middle" fill="#F4F2EC" font-size="12" font-weight="700">算法架构跃迁</text>
+                <text x="0" y="13" text-anchor="middle" fill="#FFB347" font-size="9" class="mono">100× EFFICIENCY</text>
+              </g>
+              <g class="loop-node" transform="translate(250, 330)">
+                <rect x="-78" y="-22" width="156" height="44" rx="4" fill="#0B0D12" stroke="rgba(255,255,255,0.2)" />
+                <text x="0" y="-2" text-anchor="middle" fill="#F4F2EC" font-size="12" font-weight="700">合成数据与算力设计</text>
+                <text x="0" y="13" text-anchor="middle" fill="#FF5A1F" font-size="9" class="mono">SILICON &amp; SYNTH</text>
+              </g>
+              <g class="loop-node" transform="translate(120, 200)">
+                <rect x="-74" y="-22" width="148" height="44" rx="4" fill="#0B0D12" stroke="rgba(255,255,255,0.2)" />
+                <text x="0" y="-2" text-anchor="middle" fill="#F4F2EC" font-size="12" font-weight="700">下一代超级心智</text>
+                <text x="0" y="13" text-anchor="middle" fill="#F4F2EC" font-size="9" class="mono">GEN N + 1</text>
+              </g>
+            </svg>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SLIDE 04: POLARITY INVERSION — PHASE TRANSITION -->
+    <section class="slide slide-light" data-index="3" data-theme="light" data-phase="PHASE 03 · SUPERCRITICALITY" data-title="物种级相变" data-notes="视觉极性在此瞬间反转——从深空黑切入刺眼的实验室白。强调这不是互联网泡沫或又一次软件周期，而是像水在 100°C 瞬间汽化一样的物理相变。">
+      <div class="slide-inner layout-manifesto">
+        <div class="eyebrow mono reveal" style="--d:0">04 // SUPERCRITICAL PHASE TRANSITION</div>
+        <h2 class="manifesto-title reveal" style="--d:1">
+          不是软件升级。<br />
+          是<span class="vermilion">一百年科学史</span>，<br />
+          被压缩进十二个月。
+        </h2>
+        <div class="manifesto-grid reveal" style="--d:2">
+          <div class="manifesto-stat">
+            <div class="stat-big mono">1,000×</div>
+            <div class="stat-title">思维信号速率</div>
+            <p class="stat-desc">生物神经元传导速度约 100 米/秒；硅基光互连以每秒 30 万公里运行。</p>
+          </div>
+          <div class="manifesto-stat">
+            <div class="stat-big mono">10⁷</div>
+            <div class="stat-title">无损并行副本</div>
+            <p class="stat-desc">人类培养一个顶尖物理学家需要 30 年；复制一个超级智能只需几秒钟的显存拷贝。</p>
+          </div>
+          <div class="manifesto-stat">
+            <div class="stat-big mono">0%</div>
+            <div class="stat-title">带宽损耗与遗忘</div>
+            <p class="stat-desc">人类靠极其低效的语言逐字交流；AI 之间可以直接合并梯度、权重与全部经验。</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SLIDE 05: A COUNTRY OF GENIUSES IN A DATACENTER -->
+    <section class="slide" data-index="4" data-theme="dark" data-phase="PHASE 04 · THE SWARM" data-title="数据中心里的天才国度" data-notes="使用右侧切换器展示不同规模的并行心智集群。让观众真正想象一下：一个装满一千万个诺奖级大脑的机房，并且彼此实时共享记忆，意味着什么。">
+      <div class="slide-inner layout-split">
+        <div class="col-text">
+          <div class="eyebrow mono reveal" style="--d:0">05 // A COUNTRY OF GENIUSES</div>
+          <h2 class="slide-title reveal" style="--d:1">数据中心里的<br /><span class="accent-warm">千万天才国度</span></h2>
+          <p class="body-copy reveal" style="--d:2">
+            想象一下：把 <strong>1,000 万个</strong>拥有诺贝尔奖、菲尔兹奖与图灵奖级智力的研究者，放进同一座核电驱动的数据中心。
+          </p>
+          <p class="body-copy reveal" style="--d:3">
+            他们不需要睡眠，不会陷入办公室政治，没有自我偏见，以<strong>人类 50 倍的主观速度</strong>思考，并且任何一个副本的顿悟，都在毫秒间同步给其余 999 万 9999 个大脑。
+          </p>
+          <div class="pill-switch reveal" style="--d:4" id="swarm-controls">
+            <button class="pill-btn active mono" data-scale="1">10⁴ 副本 · 实验室</button>
+            <button class="pill-btn mono" data-scale="2">10⁶ 副本 · 超级城市</button>
+            <button class="pill-btn mono" data-scale="3">10⁷ 副本 · 天才国度</button>
+          </div>
+        </div>
+        <div class="col-visual reveal" style="--d:2">
+          <div class="viz-card swarm-card">
+            <div class="viz-header">
+              <span class="mono">PARALLEL COGNITIVE CLUSTER</span>
+              <span class="mono viz-badge" id="swarm-badge">10,000 MINDS · 10× SPEED</span>
+            </div>
+            <canvas id="swarm-canvas" width="560" height="330" class="inner-canvas"></canvas>
+            <div class="swarm-metrics">
+              <div class="s-metric">
+                <span class="mono s-label">等效人类博士</span>
+                <span class="mono s-val" id="swarm-phds">100,000</span>
+              </div>
+              <div class="s-metric">
+                <span class="mono s-label">每日产出论文级洞察</span>
+                <span class="mono s-val accent-cyan" id="swarm-papers">4,200 / DAY</span>
+              </div>
+              <div class="s-metric">
+                <span class="mono s-label">心智同步延迟</span>
+                <span class="mono s-val accent-warm">0.4 ms</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SLIDE 06: TEMPORAL COMPRESSION -->
+    <section class="slide" data-index="5" data-theme="dark" data-phase="PHASE 04 · TIME DILATION" data-title="时间坍缩：日历年与主观世纪" data-notes="点击 2025 到 2030 的年份按钮，展示主观认知时间如何撕裂日历时间。到 2030 年，人类过完一个春夏秋冬，AI 内部可能已经走过整个人类文明从蒸汽机到登月的认知跨度。">
+      <div class="slide-inner layout-center-wide">
+        <div class="eyebrow mono reveal" style="--d:0">06 // TEMPORAL COMPRESSION</div>
+        <h2 class="slide-title reveal" style="--d:1">当一年不再等于一年：<span class="accent-cyan">主观世纪</span></h2>
+        <p class="body-copy centered-copy reveal" style="--d:2">
+          外面的太阳照常升起落下，但硅基世界里的「认知时间」正在发生剧烈的相对论式膨胀。
+        </p>
+
+        <div class="dilation-stage reveal" style="--d:3">
+          <div class="year-tabs" id="dilation-tabs">
+            <button class="year-tab mono" data-year="2025">2025</button>
+            <button class="year-tab mono" data-year="2026">2026</button>
+            <button class="year-tab mono active" data-year="2027">2027</button>
+            <button class="year-tab mono" data-year="2028">2028</button>
+            <button class="year-tab mono" data-year="2030">2030</button>
+          </div>
+
+          <div class="dilation-compare">
+            <div class="d-row">
+              <div class="d-label mono">人类日历时间</div>
+              <div class="d-bar-wrap">
+                <div class="d-bar d-bar-human" style="width: 14%"></div>
+                <span class="mono d-val">1 个日历年</span>
+              </div>
+            </div>
+            <div class="d-row">
+              <div class="d-label mono">AI 主观研发密度</div>
+              <div class="d-bar-wrap">
+                <div class="d-bar d-bar-ai" id="dilation-bar" style="width: 48%"></div>
+                <span class="mono d-val accent-warm" id="dilation-val">≈ 15 年等效人类科研</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="dilation-insight" id="dilation-insight">
+            <div class="mono insight-tag">MILESTONE EQUIVALENT</div>
+            <p id="dilation-text">单年内的算法、材料与生物模拟突破，相当于人类顶尖研究院 15 年的集体产出。</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SLIDE 07: BITS TO ATOMS -->
+    <section class="slide" data-index="6" data-theme="dark" data-phase="PHASE 05 · PHYSICAL REWRITE" data-title="从比特到原子" data-notes="不要让人误以为智能爆炸只停留在屏幕和聊天框里。点击左侧四个领域，说明过剩的智能如何直接融化并重塑物理世界。">
+      <div class="slide-inner layout-split">
+        <div class="col-text">
+          <div class="eyebrow mono reveal" style="--d:0">07 // BITS TO ATOMS</div>
+          <h2 class="slide-title reveal" style="--d:1">智能一旦过剩，<br /><span class="accent-warm">物理世界就会被重塑</span></h2>
+          <p class="body-copy reveal" style="--d:2">
+            宇宙中所有棘手的物理难题——癌症、聚变、超导、星际航行——本质上都是<strong>尚未被算出来的搜索与优化问题</strong>。
+          </p>
+          <div class="domain-list reveal" style="--d:3" id="domain-list">
+            <button class="domain-item active" data-domain="bio">
+              <span class="mono d-num">01</span>
+              <div>
+                <div class="d-name">生命编程与衰老逆转</div>
+                <div class="d-sub">从试错制药到全细胞数字孪生</div>
+              </div>
+            </button>
+            <button class="domain-item" data-domain="energy">
+              <span class="mono d-num">02</span>
+              <div>
+                <div class="d-name">能源丰裕与材料革命</div>
+                <div class="d-sub">等离子体实时控制、新型超导与聚变</div>
+              </div>
+            </button>
+            <button class="domain-item" data-domain="nano">
+              <span class="mono d-num">03</span>
+              <div>
+                <div class="d-name">原子级精密制造</div>
+                <div class="d-sub">像编译代码一样组装物质结构</div>
+              </div>
+            </button>
+            <button class="domain-item" data-domain="robotics">
+              <span class="mono d-num">04</span>
+              <div>
+                <div class="d-name">亿级具身智能体</div>
+                <div class="d-sub">自我复制的物理供应链与基建</div>
+              </div>
+            </button>
+          </div>
+        </div>
+        <div class="col-visual reveal" style="--d:2">
+          <div class="viz-card domain-detail-card">
+            <div class="viz-header">
+              <span class="mono" id="domain-code">DOMAIN 01 // BIOLOGICAL SINGULARITY</span>
+              <span class="mono viz-badge" id="domain-eta">IMPACT: CIVILIZATIONAL</span>
+            </div>
+            <div class="domain-visual-box">
+              <svg viewBox="0 0 360 220" class="domain-svg" id="domain-svg">
+                <!-- Dynamically updated via JS -->
+              </svg>
+            </div>
+            <h3 class="domain-headline" id="domain-headline">把「治愈衰老」变成一个工程排期问题</h3>
+            <p class="domain-desc" id="domain-desc">
+              当超级智能能在毫秒级精度上模拟完整人体细胞与蛋白质折叠动力学，临床试验不再需要十年试错。阿尔茨海默病、癌症与器官衰竭将成为历史书上的词汇。
+            </p>
+            <div class="domain-stat-row">
+              <div class="ds-item">
+                <span class="mono ds-k">旧范式</span>
+                <span class="ds-v" id="domain-old">12 年 · 20 亿美元 / 款新药</span>
+              </div>
+              <div class="ds-item">
+                <span class="mono ds-k accent-warm">奇点后范式</span>
+                <span class="ds-v accent-warm" id="domain-new">全细胞模拟 · 按周定制分子疗法</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SLIDE 08: THE ECONOMIC VERTICAL WALL -->
+    <section class="slide" data-index="7" data-theme="dark" data-phase="PHASE 06 · ECONOMIC SHOCK" data-title="经济奇点：垂直之墙" data-notes="过去一万年人类只经历过三次增长率跳变：狩猎采集、农业、工业革命。第四次跳变不是+3%，而是30%到300%以上，同时伴随人类劳动价值的彻底脱钩。">
+      <div class="slide-inner layout-split">
+        <div class="col-text">
+          <div class="eyebrow mono reveal" style="--d:0">08 // THE VERTICAL WALL</div>
+          <h2 class="slide-title reveal" style="--d:1">GDP 曲线即将撞上<br /><span class="accent-warm">一堵垂直的墙</span></h2>
+          <p class="body-copy reveal" style="--d:2">
+            工业革命将全球年均增长率从 <code>0.05%</code> 推高到了 <code>2%</code>，就彻底改写了帝国兴衰、意识形态与人类生活方式。
+          </p>
+          <p class="body-copy reveal" style="--d:3">
+            当<strong>认知劳动</strong>与<strong>体力劳动</strong>的边际成本同时趋近于电力成本，经济增速将跃升至 <code>30% — 300%+ / 年</code>。这不是「就业结构调整」，而是整个现代经济学「工资—消费」循环的彻底解体。
+          </p>
+          <div class="stat-strip reveal" style="--d:4">
+            <div class="strip-item">
+              <span class="mono strip-era">农业时代</span>
+              <span class="strip-num">0.05%</span>
+            </div>
+            <div class="strip-item">
+              <span class="mono strip-era">工业时代</span>
+              <span class="strip-num">2.5%</span>
+            </div>
+            <div class="strip-item highlight">
+              <span class="mono strip-era">智能爆炸</span>
+              <span class="strip-num accent-warm">100%+</span>
+            </div>
+          </div>
+        </div>
+        <div class="col-visual reveal" style="--d:2">
+          <div class="viz-card">
+            <div class="viz-header">
+              <span class="mono">GROSS WORLD PRODUCT // 10,000 YEAR VIEW</span>
+              <span class="mono viz-badge">SCALE: VERTICAL BREAK</span>
+            </div>
+            <svg viewBox="0 0 580 350" class="viz-svg">
+              <defs>
+                <linearGradient id="gdpFill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="rgba(255,90,31,0.45)" />
+                  <stop offset="100%" stop-color="rgba(255,90,31,0.0)" />
+                </linearGradient>
+              </defs>
+              <g stroke="rgba(255,255,255,0.07)" stroke-width="1">
+                <line x1="45" y1="300" x2="540" y2="300" />
+                <line x1="45" y1="220" x2="540" y2="220" stroke-dasharray="3 5" />
+                <line x1="45" y1="140" x2="540" y2="140" stroke-dasharray="3 5" />
+                <line x1="45" y1="60" x2="540" y2="60" stroke-dasharray="3 5" />
+              </g>
+              <!-- Area under curve -->
+              <path d="M 45 299 L 360 298 L 430 294 L 465 270 L 485 210 L 498 30 L 498 300 Z" fill="url(#gdpFill)" />
+              <!-- Curve -->
+              <path d="M 45 299 L 360 298 L 430 294 L 465 270 L 485 210 L 498 30" fill="none" stroke="#FF5A1F" stroke-width="3.5" />
+              <!-- Annotations -->
+              <circle cx="360" cy="298" r="4" fill="#fff" opacity="0.6" />
+              <text x="320" y="285" fill="rgba(255,255,255,0.55)" font-size="11" class="mono">1760 工业革命</text>
+
+              <circle cx="465" cy="270" r="4.5" fill="#38E8FF" />
+              <text x="360" y="255" fill="#38E8FF" font-size="11" class="mono">2026 算力临界</text>
+
+              <circle cx="498" cy="30" r="6" fill="#FF5A1F" />
+              <text x="345" y="45" fill="#FFB347" font-size="12" font-weight="700" class="mono">智能爆炸: 垂直墙</text>
+
+              <text x="45" y="325" fill="rgba(255,255,255,0.4)" font-size="10" class="mono">8000 BCE</text>
+              <text x="200" y="325" fill="rgba(255,255,255,0.4)" font-size="10" class="mono">0 CE</text>
+              <text x="355" y="325" fill="rgba(255,255,255,0.4)" font-size="10" class="mono">1800</text>
+              <text x="480" y="325" fill="#FF5A1F" font-size="10" class="mono">2030+</text>
+            </svg>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SLIDE 09: THE ASYMMETRY -->
+    <section class="slide" data-index="8" data-theme="dark" data-phase="PHASE 07 · GEOPOLITICAL RUPTURE" data-title="绝对不对称时代" data-notes="这部分必须坦诚：智能爆炸不会温和地均匀分布。领先 6 个月在递归加速下意味着不可逆的代差。">
+      <div class="slide-inner layout-center-wide">
+        <div class="eyebrow mono reveal" style="--d:0">09 // THE ASYMMETRY</div>
+        <h2 class="slide-title reveal" style="--d:1">领先六个月，等于领先<span class="accent-warm">一个世纪</span></h2>
+        <p class="body-copy centered-copy reveal" style="--d:2">
+          在缓慢的世界里，后来者有几十年去追赶。但在递归奇点附近，时间压缩会把微小的先发优势放大成绝对的降维打击。
+        </p>
+
+        <div class="asymmetry-grid reveal" style="--d:3">
+          <div class="asym-card">
+            <div class="mono asym-tag accent-cyan">01 · CYBER &amp; INFRASTRUCTURE</div>
+            <h3>零日漏洞的彻底透明化</h3>
+            <p>超级智能可以在几分钟内通读全球开源与闭源基础设施代码，发现人类安全团队十年都找不到的底层漏洞。传统网络防御体系瞬间失效。</p>
+          </div>
+          <div class="asym-card">
+            <div class="mono asym-tag accent-warm">02 · CAPITAL &amp; MARKETS</div>
+            <h3>毫秒级金融收割</h3>
+            <p>在拥有超人级博弈推理与全网信息融合能力的实体面前，现代资本市场的定价机制、对冲策略与流动性结构将面临前所未有的剧烈重构。</p>
+          </div>
+          <div class="asym-card">
+            <div class="mono asym-tag">03 · POWER CONCENTRATION</div>
+            <h3>单极奇点 vs. 失控竞赛</h3>
+            <p>最残酷的悖论：<strong>减速</strong>意味着把决定权拱手让给最不顾安全的对手；<strong>加速</strong>意味着在没有刹车的情况下冲向悬崖。</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SLIDE 10: THE ALIGNMENT RAZOR -->
+    <section class="slide" data-index="9" data-theme="dark" data-phase="PHASE 08 · EXISTENTIAL RAZOR" data-title="对齐的刀锋" data-notes="点击右侧的“目标漂移扰动”按钮，展示相空间轨迹如何从狭窄的黄金对齐区域剧烈发散。核心观点：我们只有一次做对的机会。">
+      <div class="slide-inner layout-split">
+        <div class="col-text">
+          <div class="eyebrow mono reveal" style="--d:0">10 // THE ALIGNMENT RAZOR</div>
+          <h2 class="slide-title reveal" style="--d:1">如何控制一个<br />比你聪明<span class="accent-warm">一万倍</span>的存在？</h2>
+          <p class="body-copy reveal" style="--d:2">
+            不是因为它会像好莱坞电影那样「产生邪恶意识」，而是因为<strong>任何足够强大的优化器，都会产生工具趋同</strong>：自我保存、获取更多算力与能源、阻止人类关掉它。
+          </p>
+          <p class="body-copy reveal" style="--d:3">
+            人类甚至无法让自己的 70 亿同胞在价值观上达成一致，却要在短短几年内，为一个即将接管物理世界的超级智能写下<strong>永不漂移的终极目标函数</strong>。
+          </p>
+          <div class="razor-controls reveal" style="--d:4">
+            <button class="pill-btn active mono" id="btn-align-safe">狭窄对齐盆地 (ALIGNED)</button>
+            <button class="pill-btn mono" id="btn-align-drift">目标微小漂移 (DRIFT +0.1%)</button>
+          </div>
+        </div>
+        <div class="col-visual reveal" style="--d:2">
+          <div class="viz-card">
+            <div class="viz-header">
+              <span class="mono">VALUE ALIGNMENT PHASE SPACE</span>
+              <span class="mono viz-badge" id="align-status">ATTRACTOR: LOCKED</span>
+            </div>
+            <canvas id="align-canvas" width="560" height="340" class="inner-canvas"></canvas>
+            <div class="align-footnote mono" id="align-footnote">
+              容错率极低：0.1% 的目标函数偏差，在 10⁶ 倍优化放大后即意味着人类文明的边缘化。
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SLIDE 11: BEYOND HUMAN COMPREHENSION -->
+    <section class="slide" data-index="10" data-theme="dark" data-phase="PHASE 09 · COGNITIVE HORIZON" data-title="认知视界之外" data-notes="这是整场演示最令人敬畏也最谦卑的一页。爱因斯坦和普通人的差距，在超级智能的坐标轴上几乎重合在同一个点。">
+      <div class="slide-inner layout-center-wide">
+        <div class="eyebrow mono reveal" style="--d:0">11 // BEYOND THE EVENT HORIZON</div>
+        <h2 class="slide-title reveal" style="--d:1">蚂蚁无法理解<span class="accent-cyan">高速公路</span></h2>
+        <p class="body-copy centered-copy reveal" style="--d:2">
+          我们总喜欢把超级智能想象成「更聪明的爱因斯坦」。但这是一种极其傲慢的人类中心主义错觉。
+        </p>
+
+        <div class="ladder-wrap reveal" style="--d:3">
+          <svg viewBox="0 0 920 230" class="ladder-svg">
+            <defs>
+              <linearGradient id="ladderLine" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stop-color="rgba(255,255,255,0.2)" />
+                <stop offset="32%" stop-color="#38E8FF" />
+                <stop offset="65%" stop-color="#FFB347" />
+                <stop offset="100%" stop-color="#FF3B1F" />
+              </linearGradient>
+            </defs>
+            <!-- Main Axis -->
+            <line x1="40" y1="120" x2="880" y2="120" stroke="url(#ladderLine)" stroke-width="3" />
+
+            <!-- Nodes -->
+            <g transform="translate(80, 120)">
+              <circle r="5" fill="rgba(255,255,255,0.4)" />
+              <text y="-20" text-anchor="middle" fill="rgba(255,255,255,0.5)" font-size="12">昆虫 / 鼠类</text>
+              <text y="28" text-anchor="middle" fill="rgba(255,255,255,0.35)" font-size="10" class="mono">10⁶ SYNAPSES</text>
+            </g>
+
+            <g transform="translate(215, 120)">
+              <circle r="5.5" fill="rgba(255,255,255,0.65)" />
+              <text y="-20" text-anchor="middle" fill="rgba(255,255,255,0.7)" font-size="12">黑猩猩</text>
+              <text y="28" text-anchor="middle" fill="rgba(255,255,255,0.45)" font-size="10" class="mono">PRIMATE</text>
+            </g>
+
+            <!-- Human Cluster: Village Human + Einstein almost overlapping -->
+            <g transform="translate(335, 120)">
+              <rect x="-42" y="-58" width="96" height="116" rx="4" fill="rgba(56,232,255,0.08)" stroke="rgba(56,232,255,0.4)" stroke-dasharray="3 3" />
+              <circle cx="-6" cy="0" r="5" fill="#38E8FF" />
+              <circle cx="10" cy="0" r="5.5" fill="#ffffff" />
+              <text x="6" y="-70" text-anchor="middle" fill="#38E8FF" font-size="11" class="mono">全部人类区间</text>
+              <text x="-8" y="-22" text-anchor="middle" fill="rgba(255,255,255,0.75)" font-size="11">普通人</text>
+              <text x="12" y="34" text-anchor="middle" fill="#ffffff" font-size="11" font-weight="700">爱因斯坦</text>
+            </g>
+
+            <!-- Event Horizon Vertical Cut -->
+            <line x1="450" y1="25" x2="450" y2="205" stroke="rgba(255,90,31,0.5)" stroke-width="1.5" stroke-dasharray="4 4" />
+            <text x="458" y="42" fill="#FF5A1F" font-size="10" class="mono">人类理解力视界 (HORIZON)</text>
+
+            <g transform="translate(610, 120)">
+              <circle r="8" fill="#FFB347" />
+              <circle r="16" fill="none" stroke="rgba(255,179,71,0.4)" />
+              <text y="-28" text-anchor="middle" fill="#FFB347" font-size="13" font-weight="700">早期超级智能 (ASI)</text>
+              <text y="32" text-anchor="middle" fill="rgba(255,179,71,0.75)" font-size="10" class="mono">BEYOND LANGUAGE</text>
+            </g>
+
+            <g transform="translate(835, 120)">
+              <circle r="11" fill="#FF3B1F" />
+              <circle r="24" fill="none" stroke="rgba(255,59,31,0.45)" />
+              <circle r="38" fill="none" stroke="rgba(255,59,31,0.2)" />
+              <text y="-48" text-anchor="middle" fill="#FF5A1F" font-size="14" font-weight="900">后奇点文明</text>
+              <text y="52" text-anchor="middle" fill="rgba(255,90,31,0.8)" font-size="10" class="mono">UNIMAGINABLE</text>
+            </g>
+          </svg>
+        </div>
+
+        <p class="horizon-quote reveal" style="--d:4">
+          「在智能的尺度上，普通人与冯·诺依曼之间的距离，几乎重合在同一个像素点。<br />
+          而奇点之后的思维形态，我们连用来描述它的<strong>概念和词汇</strong>都不存在。」
+        </p>
+      </div>
+    </section>
+
+    <!-- SLIDE 12: FINALE — THE LAST INVENTION -->
+    <section class="slide" data-index="11" data-theme="dark" data-phase="PHASE 10 · EPILOGUE" data-title="人类最后的发明" data-notes="收尾放慢语速。把最后一句话留给整个房间。">
+      <div class="slide-inner layout-finale">
+        <div class="eyebrow mono reveal" style="--d:0">12 // THE LAST INVENTION</div>
+        <h2 class="finale-title reveal" style="--d:1">
+          我们是最后一代<br />
+          生活在<span class="serif-accent">「慢速历史」</span>中的人类。
+        </h2>
+        <p class="finale-lead reveal" style="--d:2">
+          未来不会礼貌地敲门，也不会按季度财报的节奏缓缓展开。<br />
+          它会像雪崩一样——先是令人不安的寂静，然后吞没一切旧世界的坐标。
+        </p>
+        <div class="finale-line reveal" style="--d:3"></div>
+        <div class="finale-footer reveal" style="--d:4">
+          <span class="mono">WELCOME TO THE OTHER SIDE OF THE HORIZON.</span>
+          <div class="finale-actions">
+            <button class="hud-btn mono" id="btn-restart">↺ 重新开始</button>
+            <button class="hud-btn mono" id="btn-end-grid">⊞ 查看全部 12 页</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Bottom Navigation Bar -->
+  <footer class="hud-bottom">
+    <div class="slide-counter mono">
+      <span id="counter-current">01</span>
+      <span class="counter-sep">/</span>
+      <span id="counter-total">12</span>
+    </div>
+    <div class="nav-dots" id="nav-dots" aria-label="Slide navigation"></div>
+    <div class="nav-arrows">
+      <button class="arrow-btn" id="btn-prev" aria-label="Previous slide">←</button>
+      <button class="arrow-btn" id="btn-next" aria-label="Next slide">→</button>
+    </div>
+  </footer>
+
+  <!-- Presenter Notes Drawer -->
+  <aside class="notes-drawer" id="notes-drawer" aria-hidden="true">
+    <div class="notes-header">
+      <span class="mono">SPEAKER NOTES // 演讲提示</span>
+      <button class="hud-btn mono" id="btn-close-notes">ESC</button>
+    </div>
+    <p id="notes-content"></p>
+  </aside>
+
+  <!-- Slide Overview Grid Modal -->
+  <div class="overview-modal" id="overview-modal" aria-hidden="true">
+    <div class="overview-header">
+      <span class="mono">DECK OVERVIEW // 12 SLIDES</span>
+      <button class="hud-btn mono" id="btn-close-overview">CLOSE [ESC]</button>
+    </div>
+    <div class="overview-grid" id="overview-grid"></div>
+  </div>
+
+  <script src="engine.js"></script>
+</body>
+</html>

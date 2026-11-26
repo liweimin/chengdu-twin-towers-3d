@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0b0d">
+<title>智能爆炸 · 互动演示</title>
+<style>
+/* INLINE STYLES */
+</style>
+</head>
+<body>
+<main class="stage" aria-label="智能爆炸演示">
+  <section class="slide hero cover" data-title="智能爆炸" data-motion="iris" aria-labelledby="title-1" inert>
+    <div class="art cover-art" aria-hidden="true"></div>
+    <div class="hero-copy">
+      <p class="tag english reveal">Intelligence Explosion</p>
+      <h1 id="title-1" class="reveal">智能爆炸</h1>
+      <p class="lead reveal">当 AI 开始加速 AI 研发</p>
+      <button class="begin reveal" type="button">开始演示 <span aria-hidden="true">↗</span></button>
+    </div>
+  </section>
+
+  <section class="slide paper" data-title="思想起点" data-motion="lift" aria-labelledby="title-2" inert>
+    <div class="year" aria-hidden="true">1965</div>
+    <div class="content">
+      <p class="tag reveal">思想起点</p>
+      <h2 id="title-2" class="reveal">如果机器也能设计<br>更聪明的机器？</h2>
+      <p class="quote reveal"><strong>I. J. Good，1965</strong><br>更强的机器能够参与设计下一代机器，<br class="desk">能力的增益会反馈到研发本身。</p>
+    </div>
+  </section>
+
+  <section class="slide loop" data-title="研发闭环" data-motion="iris" aria-labelledby="title-3" inert>
+    <div class="art loop-art" aria-hidden="true"></div>
+    <div class="content">
+      <p class="tag reveal">递归自我改进</p>
+      <h2 id="title-3" class="reveal">研发闭环</h2>
+      <div class="steps reveal" aria-label="点选研发步骤">
+        <button type="button" data-step="0" aria-pressed="true"><span>01</span>提出改进方案</button>
+        <button type="button" data-step="1" aria-pressed="false"><span>02</span>并行运行实验</button>
+        <button type="button" data-step="2" aria-pressed="false"><span>03</span>筛出有效改进</button>
+        <button type="button" data-step="3" aria-pressed="false"><span>04</span>用更强的 AI 开始下一轮</button>
+      </div>
+      <p class="step-description" id="step-description" aria-live="polite">AI 读论文、比较方案，提出能被实验检验的改进。</p>
+      <button class="inline-action" id="loop-play" type="button" aria-pressed="false"><span aria-hidden="true">▶</span> 播放一轮</button>
+    </div>
+    <div class="loop-readout" aria-hidden="true"><span id="loop-id">01</span><span>/</span>04</div>
+  </section>
+
+  <section class="slide paper" data-title="已经观察到的进展" data-motion="lift" aria-labelledby="title-4" inert>
+    <div class="content">
+      <p class="tag reveal">已经观察到的进展</p>
+      <h2 id="title-4" class="reveal">闭环的局部已经出现</h2>
+      <div class="evidence reveal">
+        <article>
+          <div class="measure">1%</div>
+          <h3>Gemini 训练时间的降幅</h3>
+          <p>据谷歌报告，AlphaEvolve 改进了一项计算操作，整体训练时间缩短约 1%。</p>
+          <a target="_blank" rel="noopener noreferrer" href="https://deepmind.google/blog/alphaevolve-a-gemini-powered-coding-agent-for-designing-advanced-algorithms/">Google DeepMind ↗</a>
+        </article>
+        <article>
+          <div class="measure">7<small>个月</small></div>
+          <h3>软件任务时长的历史翻倍周期</h3>
+          <p>METR 在 2025 年的研究中发现，AI 能以 50% 成功率独立完成的任务时长约每 7 个月翻倍。</p>
+          <a target="_blank" rel="noopener noreferrer" href="https://metr.org/blog/2025-03-19-measuring-ai-ability-to-complete-long-tasks/">METR ↗</a>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide simulator" data-title="迭代模拟" data-motion="scan" aria-labelledby="title-5" inert>
+    <div class="content">
+      <p class="tag reveal">思想实验</p>
+      <h2 id="title-5" class="reveal">同样 <span id="question-days">90</span> 天，能做几轮？</h2>
+      <p class="deck-note reveal">首轮耗时 21 天。拖动滑块，比较两组能完成的完整轮次。</p>
+      <div class="sim-controls reveal">
+        <label>每轮耗时缩短 <output id="gain-label" for="gain">20%</output><input type="range" id="gain" min="0" max="30" value="20" step="1"></label>
+        <label>总时间 <output id="days-label" for="days">90 天</output><input type="range" id="days" min="30" max="120" value="90" step="1"></label>
+        <button id="reset-model" type="button" class="inline-action">重置</button>
+      </div>
+      <div class="timelines reveal" aria-label="迭代周期对比">
+        <div class="timeline">
+          <div class="timeline-label">固定耗时</div>
+          <div class="track" id="baseline-track"></div>
+          <div class="round-count"><b id="baseline-count">4</b> 轮</div>
+        </div>
+        <div class="timeline accelerated">
+          <div class="timeline-label">逐轮缩短</div>
+          <div class="track" id="model-track"></div>
+          <div class="round-count"><b id="model-count">8</b> 轮</div>
+        </div>
+        <div class="axis"><span>0</span><span id="middle-day">45</span><span id="last-day">90 天</span></div>
+      </div>
+      <p class="deck-note sim-foot">条内数字为每轮耗时，单位为天。模型假定每轮至少需要 2 天。</p>
+      <p class="sr-only" id="model-summary" aria-live="polite"></p>
+    </div>
+  </section>
+
+  <section class="slide hero warp" data-title="一场听不见的智能爆炸" data-motion="rush" aria-labelledby="title-6" inert>
+    <div class="art warp-art" aria-hidden="true"></div>
+    <div class="hero-copy">
+      <p class="tag reveal">如果闭环开始加速</p>
+      <h2 id="title-6" class="reveal">一场听不见的<br>智能爆炸</h2>
+      <p class="lead reveal">周五立项。周末并行验证上百个方案。<br>周一开会时，最好的方案已经催生了下一代。</p>
+    </div>
+  </section>
+
+  <section class="slide split" data-title="软件" data-motion="glide" aria-labelledby="title-7" inert>
+    <div class="art software-art" aria-hidden="true"></div>
+    <div class="content">
+      <p class="tag reveal">软件</p>
+      <h2 id="title-7" class="reveal">有自动测试的地方<br>迭代可能最先提速</h2>
+      <p class="reveal">同一个性能问题可以同时试几十种改法。<br class="desk">跑完测试，实测最快的版本留下来。</p>
+      <p class="accent reveal">瓶颈随之转向测试覆盖与线上验证。</p>
+    </div>
+  </section>
+
+  <section class="slide paper split reverse" data-title="实验科学" data-motion="glide" aria-labelledby="title-8" inert>
+    <div class="art science-art" aria-hidden="true"></div>
+    <div class="content">
+      <p class="tag reveal">实验科学</p>
+      <h2 id="title-8" class="reveal">假设多到做不完<br>实验该先做哪一个？</h2>
+      <p class="reveal">以新材料为例，AI 可以批量提出候选方案，再根据实测结果重排下一批实验。</p>
+      <p class="accent reveal">实验设备、测量质量与复现实验<br class="desk">决定多少想法能变成可靠结果。</p>
+    </div>
+  </section>
+
+  <section class="slide hero physical" data-title="物理约束" data-motion="iris" aria-labelledby="title-9" inert>
+    <div class="art physical-art" aria-hidden="true"></div>
+    <div class="content">
+      <p class="tag reveal">物理约束</p>
+      <h2 id="title-9" class="reveal">电网有自己的工期</h2>
+      <div class="measure reveal">415 TWh</div>
+      <p class="lead reveal">2024 年全球数据中心用电量，约占全球用电量的 1.5%。</p>
+      <p class="reveal">新机房什么时候能投用，还要看电网什么时候能接入。</p>
+      <a class="reveal" target="_blank" rel="noopener noreferrer" href="https://www.iea.org/reports/energy-and-ai/executive-summary">国际能源署《Energy and AI》↗</a>
+    </div>
+  </section>
+
+  <section class="slide paper trajectories" data-title="三种可能的速度" data-motion="lift" aria-labelledby="title-10" inert>
+    <div class="content">
+      <p class="tag reveal">三种可能的速度</p>
+      <h2 id="title-10" class="reveal">闭环会怎样加速？</h2>
+      <div class="trajectory-layout reveal">
+        <div class="profile-options" aria-label="切换研发走势">
+          <button type="button" data-profile="0" aria-pressed="true">快速跃升</button>
+          <button type="button" data-profile="1" aria-pressed="false">阶梯式提速</button>
+          <button type="button" data-profile="2" aria-pressed="false">增益趋缓</button>
+          <p id="profile-description" aria-live="polite">多轮有效改进互相叠加，研发周期连续缩短。</p>
+        </div>
+        <figure class="profile-figure">
+          <figcaption><span>研发产出速率</span><span>情景示意</span></figcaption>
+          <canvas id="profile-chart" role="img" aria-label="快速跃升情景，研发产出速率随时间越来越快地上升"></canvas>
+          <div class="profile-axis">时间</div>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide hero control" data-title="控制权" data-motion="iris" aria-labelledby="title-11" inert>
+    <div class="art control-art" aria-hidden="true"></div>
+    <div class="hero-copy">
+      <p class="tag reveal">控制权</p>
+      <h2 id="title-11" class="reveal">当研发周期短过审批周期，<br class="desk">谁还有时间叫停？</h2>
+      <ul class="questions">
+        <li class="reveal">谁能发起高成本实验？</li>
+        <li class="reveal">谁独立验证结果？</li>
+        <li class="reveal">谁能暂停部署并回退？</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="slide paper indicators" data-title="如何判断闭环在加速" data-motion="lift" aria-labelledby="title-12" inert>
+    <div class="content">
+      <p class="tag reveal">如何判断闭环在加速</p>
+      <h2 id="title-12" class="reveal">下一轮研发真的更快了吗？</h2>
+      <dl class="reveal">
+        <div><dt>周期</dt><dd>从提出假设到在生产环境中验证改进，用了多久？</dd></div>
+        <div><dt>人工介入</dt><dd>完成同样难度的任务，需要人工接手多少次？</dd></div>
+        <div><dt>跨代收益</dt><dd>这轮产生的工具或算法，让下一轮实际快了多少？</dd></div>
+      </dl>
+    </div>
+  </section>
+
+  <section class="slide hero close" data-title="下一次突破" data-motion="iris" aria-labelledby="title-13" inert>
+    <div class="art city-art" aria-hidden="true"></div>
+    <div class="hero-copy">
+      <h2 id="title-13" class="reveal">如果每一代 AI 都能<br>更快造出下一代呢？</h2>
+      <p class="lead reveal">下一次突破到来时，我们可能还在理解上一次。</p>
+    </div>
+  </section>
+</main>
+
+<nav class="console" aria-label="播放控制">
+  <div class="console-left">
+    <button id="contents-open" type="button" aria-label="目录" aria-haspopup="dialog" title="目录（G）"><span aria-hidden="true">≡</span><span class="nav-label">目录</span></button>
+    <button id="notes-open" type="button" aria-label="讲者备注" aria-haspopup="dialog" title="讲者备注（N）"><span aria-hidden="true">▤</span><span class="nav-label">备注</span></button>
+  </div>
+  <div class="console-middle">
+    <button id="prev" type="button" aria-label="上一页" title="上一页（←）">←</button>
+    <span class="position" id="position" aria-live="polite">01 / 13</span>
+    <button id="next" type="button" aria-label="下一页" title="下一页（→）">→</button>
+  </div>
+  <div class="console-right">
+    <button id="fullscreen" type="button" aria-label="全屏" title="全屏（F）"><span aria-hidden="true">⛶</span><span class="nav-label" id="fullscreen-label">全屏</span></button>
+  </div>
+</nav>
+<div class="progress" aria-hidden="true"><i></i></div>
+
+<dialog id="contents-dialog" aria-labelledby="contents-title">
+  <div class="dialog-top"><h2 id="contents-title">目录</h2><form method="dialog"><button aria-label="关闭目录">×</button></form></div>
+  <ol id="contents-list"></ol>
+  <p class="shortcuts">方向键翻页　F 全屏　G 目录　N 备注</p>
+</dialog>
+<dialog id="notes-dialog" aria-labelledby="notes-title">
+  <div class="dialog-top"><h2 id="notes-title">讲者备注</h2><form method="dialog"><button aria-label="关闭备注">×</button></form></div>
+  <p id="notes-copy"></p>
+  <ul id="notes-sources"></ul>
+</dialog>
+<noscript>请开启 JavaScript 以播放互动演示。</noscript>
+<script type="application/json" id="speaker-data">SPEAKER_DATA</script>
+<script>
+/* INLINE SCRIPT */
+</script>
+</body>
+</html>

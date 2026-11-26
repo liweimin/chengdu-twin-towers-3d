@@ -2,6 +2,12 @@
 
 用实际作品比较 Codex 和 AGY 的二维绘画、三维渲染和视频动效。每轮实验保留源码、复现说明和原始输出。
 
+## 2026 年 11 月 26 日 · 智能爆炸演示
+
+Codex 的《智能爆炸》与 AGY 的《EVENT HORIZON》。收录互动网页、PowerPoint、源码及美术资产。
+
+[两套演示与源码](intelligence-explosion/README.md)
+
 ## 2026 年 11 月 26 日 · 粒子宇宙
 
 Codex 的《引力余晖》和 AGY 的《AETHERIA》使用 p5.js 实时绘制星尘、光轨和交互星爆。
