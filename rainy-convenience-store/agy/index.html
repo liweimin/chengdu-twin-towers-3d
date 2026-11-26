@@ -1,0 +1,2252 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>深夜街角 · 24H</title>
+<style>
+  *, *::before, *::after {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #060913;
+    cursor: default;
+  }
+
+  #stage {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    background: #060913;
+  }
+
+  #sceneCanvas,
+  #glassCanvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+
+  #glassCanvas {
+    pointer-events: none;
+  }
+
+  /* 极轻的入场微提示：无按钮、不可点击，数秒或轻点后彻底淡出 */
+  #whisper {
+    position: fixed;
+    left: 50%;
+    bottom: 28px;
+    transform: translateX(-50%);
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    font-size: 12px;
+    font-weight: 300;
+    letter-spacing: 0.24em;
+    color: rgba(255, 241, 214, 0.44);
+    text-shadow: 0 1px 12px rgba(4, 7, 16, 0.92);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 2.2s ease;
+    white-space: nowrap;
+  }
+
+  #whisper.visible {
+    opacity: 1;
+  }
+
+  #whisper.hidden {
+    opacity: 0;
+  }
+</style>
+</head>
+<body>
+<div id="stage">
+  <canvas id="sceneCanvas"></canvas>
+  <canvas id="glassCanvas"></canvas>
+  <div id="whisper">轻点听雨 · 点击招牌灯闪烁</div>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  // =========================================================================
+  // 1. 虚拟像素坐标系与视口映射
+  // =========================================================================
+  const VIEW_W = 420;
+  const VIEW_H = 236;
+  const BX = 36; // 四周视差余量（像素坐标）
+  const BY = 20;
+  const LW = VIEW_W + BX * 2; // 492
+  const LH = VIEW_H + BY * 2; // 276
+
+  const sceneCanvas = document.getElementById('sceneCanvas');
+  const sctx = sceneCanvas.getContext('2d', { alpha: false });
+  const glassCanvas = document.getElementById('glassCanvas');
+  const gctx = glassCanvas.getContext('2d');
+  const whisperEl = document.getElementById('whisper');
+
+  let winW = window.innerWidth;
+  let winH = window.innerHeight;
+  let dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+  // 像素画面铺满屏幕（cover 映射，无拉伸、无黑边）
+  let pixelScale = 1;
+  let originX = 0;
+  let originY = 0;
+
+  function handleResize() {
+    winW = window.innerWidth;
+    winH = window.innerHeight;
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+    sceneCanvas.width = Math.round(winW * dpr);
+    sceneCanvas.height = Math.round(winH * dpr);
+    sctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    glassCanvas.width = Math.round(winW * dpr);
+    glassCanvas.height = Math.round(winH * dpr);
+    gctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    pixelScale = Math.max(winW / VIEW_W, winH / VIEW_H);
+    originX = (winW - VIEW_W * pixelScale) * 0.5;
+    originY = (winH - VIEW_H * pixelScale) * 0.5;
+  }
+  window.addEventListener('resize', handleResize);
+  handleResize();
+
+  // =========================================================================
+  // 2. 工具函数与确定性伪随机、微像素字体
+  // =========================================================================
+  function createLayer(w = LW, h = LH) {
+    const c = document.createElement('canvas');
+    c.width = w;
+    c.height = h;
+    const ctx = c.getContext('2d');
+    ctx.imageSmoothingEnabled = false;
+    return { canvas: c, ctx };
+  }
+
+  function mulberry32(seed) {
+    let a = seed >>> 0;
+    return function() {
+      a |= 0;
+      a = (a + 0x6D2B79F5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  function rect(ctx, x, y, w, h, color) {
+    ctx.fillStyle = color;
+    ctx.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h));
+  }
+
+  function px(ctx, x, y, color) {
+    ctx.fillStyle = color;
+    ctx.fillRect(Math.round(x), Math.round(y), 1, 1);
+  }
+
+  function drawLinePx(ctx, x0, y0, x1, y1, color) {
+    ctx.fillStyle = color;
+    x0 = Math.round(x0); y0 = Math.round(y0);
+    x1 = Math.round(x1); y1 = Math.round(y1);
+    const dx = Math.abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
+    const dy = -Math.abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
+    let err = dx + dy;
+    while (true) {
+      ctx.fillRect(x0, y0, 1, 1);
+      if (x0 === x1 && y0 === y1) break;
+      const e2 = 2 * err;
+      if (e2 >= dy) { err += dy; x0 += sx; }
+      if (e2 <= dx) { err += dx; y0 += sy; }
+    }
+  }
+
+  function drawCatenary(ctx, x0, y0, x1, y1, sag, color) {
+    ctx.fillStyle = color;
+    const steps = Math.max(Math.abs(x1 - x0), 12);
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      const x = Math.round(x0 + (x1 - x0) * t);
+      const y = Math.round(y0 + (y1 - y0) * t + Math.sin(t * Math.PI) * sag);
+      ctx.fillRect(x, y, 1, 1);
+    }
+  }
+
+  // 3x5 清晰复古像素字体
+  const FONT_3X5 = {
+    '0': ['111','101','101','101','111'],
+    '1': ['010','110','010','010','111'],
+    '2': ['111','001','111','100','111'],
+    '3': ['111','001','111','001','111'],
+    '4': ['101','101','111','001','001'],
+    '5': ['111','100','111','001','111'],
+    '6': ['111','100','111','101','111'],
+    '7': ['111','001','001','010','010'],
+    '8': ['111','101','111','101','111'],
+    '9': ['111','101','111','001','111'],
+    'A': ['010','101','111','101','101'],
+    'C': ['111','100','100','100','111'],
+    'D': ['110','101','101','101','110'],
+    'E': ['111','100','110','100','111'],
+    'F': ['111','100','110','100','100'],
+    'G': ['111','100','101','101','111'],
+    'H': ['101','101','111','101','101'],
+    'I': ['111','010','010','010','111'],
+    'K': ['101','101','110','101','101'],
+    'L': ['100','100','100','100','111'],
+    'M': ['10001','11011','10101','10001','10001'],
+    'N': ['1001','1101','1011','1001','1001'],
+    'O': ['111','101','101','101','111'],
+    'P': ['111','101','111','100','100'],
+    'R': ['110','101','110','101','101'],
+    'S': ['111','100','111','001','111'],
+    'T': ['111','010','010','010','010'],
+    'U': ['101','101','101','101','111'],
+    'V': ['101','101','101','101','010'],
+    'W': ['101','101','111','111','101'],
+    'Y': ['101','101','010','010','010'],
+    '-': ['000','000','111','000','000'],
+    '.': ['000','000','000','000','010'],
+    ' ': ['000','000','000','000','000'],
+  };
+
+  function drawPixelText(ctx, text, x, y, color, scale = 1, spacing = 1) {
+    ctx.fillStyle = color;
+    let cx = Math.round(x);
+    const cy = Math.round(y);
+    const upper = text.toUpperCase();
+    for (let i = 0; i < upper.length; i++) {
+      const glyph = FONT_3X5[upper[i]] || FONT_3X5[' '];
+      const gw = glyph[0].length;
+      for (let r = 0; r < glyph.length; r++) {
+        for (let c = 0; c < gw; c++) {
+          if (glyph[r][c] === '1') {
+            ctx.fillRect(cx + c * scale, cy + r * scale, scale, scale);
+          }
+        }
+      }
+      cx += (gw + spacing) * scale;
+    }
+  }
+
+  // 颜色插值工具
+  function lerp(a, b, t) {
+    return a + (b - a) * t;
+  }
+
+  function clamp(v, lo, hi) {
+    return v < lo ? lo : v > hi ? hi : v;
+  }
+
+  // 2x2 Bayer 抖动渐变填充
+  function fillDitheredSky(ctx, x, y, w, h, stops) {
+    const bayer = [
+      [0, 2],
+      [3, 1]
+    ];
+    for (let pyY = 0; pyY < h; pyY++) {
+      const t = pyY / Math.max(1, h - 1);
+      let s0 = stops[0], s1 = stops[stops.length - 1];
+      for (let i = 0; i < stops.length - 1; i++) {
+        if (t >= stops[i].p && t <= stops[i + 1].p) {
+          s0 = stops[i];
+          s1 = stops[i + 1];
+          break;
+        }
+      }
+      const localT = s1.p === s0.p ? 0 : (t - s0.p) / (s1.p - s0.p);
+      // 柔和分段量化，让相邻像素形成怀旧抖动过渡
+      const bands = 2;
+      const scaled = localT * bands;
+      const bandIdx = Math.floor(scaled);
+      const frac = scaled - bandIdx;
+      const tA = Math.min(1, bandIdx / bands);
+      const tB = Math.min(1, (bandIdx + 1) / bands);
+
+      const cA = `rgb(${Math.round(lerp(s0.r, s1.r, tA))},${Math.round(lerp(s0.g, s1.g, tA))},${Math.round(lerp(s0.b, s1.b, tA))})`;
+      const cB = `rgb(${Math.round(lerp(s0.r, s1.r, tB))},${Math.round(lerp(s0.g, s1.g, tB))},${Math.round(lerp(s0.b, s1.b, tB))})`;
+
+      for (let pxX = 0; pxX < w; pxX++) {
+        const threshold = (bayer[pyY & 1][pxX & 1] + 0.5) / 4;
+        ctx.fillStyle = frac > threshold ? cB : cA;
+        ctx.fillRect(x + pxX, y + pyY, 1, 1);
+      }
+    }
+  }
+
+  // =========================================================================
+  // 3. 预渲染各深度像素图层（坐标均加上 BX, BY 偏移）
+  // =========================================================================
+  const layerSky = createLayer();
+  const layerFarCity = createLayer();
+  const layerMidStreet = createLayer();
+  const layerInterior = createLayer();
+  const layerStore = createLayer();
+  const layerRoad = createLayer();
+  const layerForeground = createLayer();
+
+  // 记录远景红色航空灯位置
+  const redBeacons = [];
+  // 记录招牌热区（相对于 layerStore 的逻辑坐标，不含 BX/BY）
+  const SIGN_MAIN_RECT = { x: 82, y: 86, w: 198, h: 21 };
+  const SIGN_SIDE_RECT = { x: 66, y: 66, w: 16, h: 39 };
+  // 三台自动贩卖机热区
+  const VENDING_RECTS = [
+    { x: 286, y: 121, w: 25, h: 52, color: [160, 232, 255], name: 'ice' },
+    { x: 314, y: 123, w: 25, h: 50, color: [255, 214, 152], name: 'warm' },
+    { x: 342, y: 126, w: 22, h: 47, color: [168, 238, 210], name: 'mint' }
+  ];
+
+  // --- 3.1 天空与云雾层 ---
+  function buildSkyLayer() {
+    const ctx = layerSky.ctx;
+    fillDitheredSky(ctx, 0, 0, LW, LH, [
+      { p: 0.00, r: 7,  g: 11, b: 22 },
+      { p: 0.34, r: 12, g: 19, b: 36 },
+      { p: 0.62, r: 21, g: 31, b: 53 },
+      { p: 0.80, r: 29, g: 41, b: 64 },
+      { p: 1.00, r: 18, g: 24, b: 38 }
+    ]);
+
+    // 极淡的雨夜朦胧月晕（柔和像素抖动过渡，藏在薄云后）
+    const mx = BX + 78, my = BY + 36;
+    const bayer2 = [[0, 2], [3, 1]];
+    for (let dy = -26; dy <= 26; dy++) {
+      for (let dx = -26; dx <= 26; dx++) {
+        const dist = Math.hypot(dx, dy);
+        if (dist > 26) continue;
+        const t = 1 - dist / 26;
+        const th = (bayer2[(my + dy) & 1][(mx + dx) & 1] + 0.5) / 4;
+        if (dist <= 4.2) {
+          ctx.fillStyle = 'rgba(222, 232, 246, 0.22)';
+          ctx.fillRect(mx + dx, my + dy, 1, 1);
+        } else if (t * 1.15 > th * 0.45) {
+          const a = t * t * 0.14;
+          ctx.fillStyle = `rgba(165, 190, 226, ${a.toFixed(3)})`;
+          ctx.fillRect(mx + dx, my + dy, 1, 1);
+        }
+      }
+    }
+
+    // 低垂雨夜薄云
+    const rand = mulberry32(4021);
+    for (let i = 0; i < 14; i++) {
+      const cx = Math.floor(rand() * LW);
+      const cy = BY + 14 + Math.floor(rand() * 72);
+      const cw = 36 + Math.floor(rand() * 68);
+      const ch = 4 + Math.floor(rand() * 7);
+      ctx.fillStyle = i % 2 === 0 ? 'rgba(34, 48, 76, 0.36)' : 'rgba(13, 20, 38, 0.32)';
+      for (let row = 0; row < ch; row++) {
+        const inset = Math.abs(row - ch * 0.5) * 4;
+        const w = Math.max(4, Math.floor(cw - inset * 2));
+        ctx.fillRect(cx + Math.floor(inset), cy + row, w, 1);
+      }
+    }
+  }
+
+  // --- 3.2 远景城市天际线 ---
+  function buildFarCityLayer() {
+    const ctx = layerFarCity.ctx;
+    const rand = mulberry32(8831);
+    const groundY = BY + 174;
+
+    // 远处第一排极淡高楼剪影
+    let x = 0;
+    while (x < LW) {
+      const w = 18 + Math.floor(rand() * 26);
+      const h = 48 + Math.floor(rand() * 74);
+      const y = groundY - h;
+      rect(ctx, x, y, w, h, '#10182a');
+      rect(ctx, x, y, w, 1, '#18233a');
+      // 屋顶天线或水箱
+      if (rand() > 0.55) {
+        const ax = x + Math.floor(w * 0.5);
+        const ah = 8 + Math.floor(rand() * 14);
+        rect(ctx, ax, y - ah, 1, ah, '#18243b');
+        if (ah > 15 && redBeacons.length < 3) {
+          redBeacons.push({ x: ax, y: y - ah, phase: rand() * Math.PI * 2 });
+        }
+      }
+      // 稀疏零星的深夜窗户
+      for (let wy = y + 5; wy < groundY - 18; wy += 5) {
+        for (let wx = x + 3; wx < x + w - 4; wx += 4) {
+          const r = rand();
+          if (r > 0.91) {
+            rect(ctx, wx, wy, 2, 2, r > 0.965 ? '#c79e65' : '#43587a');
+          } else if (r > 0.87) {
+            rect(ctx, wx, wy, 2, 2, '#1a2640');
+          }
+        }
+      }
+      x += w + Math.floor(rand() * 5) - 2;
+    }
+
+    // 稍近一点的居民楼剪影
+    x = -6;
+    while (x < LW + 6) {
+      const w = 22 + Math.floor(rand() * 34);
+      const h = 34 + Math.floor(rand() * 58);
+      const y = groundY - h;
+      rect(ctx, x, y, w, h, '#141e33');
+      rect(ctx, x + 1, y, w - 2, 1, '#1e2c48');
+      // 屋顶小水塔
+      if (rand() > 0.65) {
+        rect(ctx, x + 4, y - 5, 7, 5, '#172238');
+        rect(ctx, x + 5, y - 6, 5, 1, '#22314e');
+      }
+      for (let wy = y + 6; wy < groundY - 12; wy += 6) {
+        for (let wx = x + 4; wx < x + w - 5; wx += 5) {
+          const r = rand();
+          if (r > 0.925) {
+            const wc = r > 0.96 ? '#d9ab6c' : '#738db5';
+            rect(ctx, wx, wy, 2, 3, wc);
+          } else if (r > 0.85) {
+            rect(ctx, wx, wy, 2, 3, '#1d2b45');
+          }
+        }
+      }
+      x += w + Math.floor(rand() * 8) - 2;
+    }
+
+    // 远景底部薄雨雾
+    for (let y = groundY - 40; y < groundY + 6; y++) {
+      const a = clamp((y - (groundY - 40)) / 46, 0, 1) * 0.32;
+      rect(ctx, 0, y, LW, 1, `rgba(28, 40, 64, ${a.toFixed(3)})`);
+    }
+  }
+
+  // --- 3.3 中景街角建筑、暗巷与电线杆 ---
+  function buildMidStreetLayer() {
+    const ctx = layerMidStreet.ctx;
+    const baseY = BY + 173;
+
+    // ---- 左侧邻街老旧二层小楼（已打烊） ----
+    const lx = BX - 26;
+    const lw = 84;
+    const ly = BY + 46;
+    rect(ctx, lx, ly, lw, baseY - ly, '#161f33');
+    // 侧面暗面
+    rect(ctx, lx + lw - 12, ly + 4, 12, baseY - ly - 4, '#101726');
+    // 屋檐线
+    rect(ctx, lx - 2, ly, lw + 3, 3, '#222f4a');
+    rect(ctx, lx, ly + 3, lw, 1, '#0d1320');
+    // 墙面微弱砖缝纹理
+    for (let wy = ly + 12; wy < baseY; wy += 12) {
+      rect(ctx, lx + 2, wy, lw - 15, 1, 'rgba(9, 13, 24, 0.45)');
+    }
+    // 二楼阳台与暗窗
+    rect(ctx, lx + 12, ly + 22, 42, 26, '#0e1422');
+    // 二楼一扇透出微弱台灯暖光的百叶窗
+    rect(ctx, lx + 15, ly + 25, 16, 18, '#54463b');
+    rect(ctx, lx + 16, ly + 26, 14, 16, '#87694a');
+    for (let sy = ly + 28; sy < ly + 42; sy += 3) {
+      rect(ctx, lx + 16, sy, 14, 1, '#5e4835');
+    }
+    // 另一扇黑窗
+    rect(ctx, lx + 35, ly + 25, 16, 18, '#131b2c');
+    rect(ctx, lx + 36, ly + 26, 6, 16, '#1a253a');
+    // 阳台铁栏杆
+    rect(ctx, lx + 8, ly + 44, 52, 2, '#24314a');
+    rect(ctx, lx + 8, ly + 54, 52, 3, '#1c273d');
+    for (let rx = lx + 10; rx <= lx + 58; rx += 4) {
+      rect(ctx, rx, ly + 45, 1, 9, '#202d45');
+    }
+    // 空调外机
+    rect(ctx, lx + 56, ly + 58, 12, 9, '#243147');
+    rect(ctx, lx + 58, ly + 60, 5, 5, '#131b2b');
+    // 一楼拉下的复古卷帘门
+    rect(ctx, lx + 10, baseY - 46, 50, 46, '#1b263b');
+    for (let sy = baseY - 44; sy < baseY; sy += 3) {
+      rect(ctx, lx + 11, sy, 48, 1, '#121a2a');
+    }
+    // 小雨棚
+    rect(ctx, lx + 8, baseY - 52, 54, 6, '#26344f');
+    rect(ctx, lx + 8, baseY - 47, 54, 1, '#0e1422');
+    // 墙边竖向暗招牌（已熄灯）
+    rect(ctx, lx + lw - 11, ly + 32, 9, 34, '#202d45');
+    rect(ctx, lx + lw - 10, ly + 33, 7, 32, '#172136');
+
+    // ---- 右侧远处静谧小巷与住宅墙 ----
+    const rx0 = BX + 368;
+    // 巷口远处小楼
+    rect(ctx, rx0 + 18, BY + 86, 62, baseY - (BY + 86), '#151e31');
+    rect(ctx, rx0 + 18, BY + 86, 62, 2, '#22304b');
+    // 远处暗窗与一盏温暖小灯
+    rect(ctx, rx0 + 28, BY + 102, 12, 14, '#1b2740');
+    rect(ctx, rx0 + 48, BY + 102, 12, 14, '#6e573e');
+    rect(ctx, rx0 + 50, BY + 104, 8, 10, '#9e7c52');
+    // 巷口低矮围墙与小门
+    rect(ctx, rx0 + 2, baseY - 26, 26, 26, '#1a2438');
+    rect(ctx, rx0 + 2, baseY - 27, 26, 2, '#293752');
+
+    // 远处巷子尽头的微暖路灯杆
+    const flx = BX + 382;
+    rect(ctx, flx, BY + 96, 2, baseY - (BY + 96), '#1d283d');
+    rect(ctx, flx - 6, BY + 96, 8, 2, '#24314a');
+    rect(ctx, flx - 7, BY + 98, 4, 2, '#ffd48a');
+
+    // 远处街角交通信号灯（极小的一抹红光，安静的深夜感）
+    const tlx = BX + 402;
+    rect(ctx, tlx, BY + 112, 2, baseY - (BY + 112), '#172033');
+    rect(ctx, tlx - 8, BY + 114, 9, 4, '#1e2940');
+    px(ctx, tlx - 6, BY + 115, '#c94c4c');
+
+    // ---- 远处电线杆与下垂电线 ----
+    const poleR = BX + 372;
+    rect(ctx, poleR, BY + 18, 4, baseY - (BY + 18), '#131b2b');
+    rect(ctx, poleR + 3, BY + 18, 1, baseY - (BY + 18), '#1d2940');
+    // 横担与绝缘子
+    rect(ctx, poleR - 10, BY + 32, 24, 2, '#192338');
+    rect(ctx, poleR - 8, BY + 42, 20, 2, '#192338');
+    rect(ctx, poleR - 6, BY + 50, 7, 10, '#172134'); // 变压器
+
+    const poleL = BX + 42;
+    rect(ctx, poleL, BY + 12, 4, baseY - (BY + 12), '#111827');
+    rect(ctx, poleL + 3, BY + 12, 1, baseY - (BY + 12), '#1c273d');
+    rect(ctx, poleL - 9, BY + 28, 22, 2, '#192338');
+    rect(ctx, poleL - 7, BY + 38, 18, 2, '#192338');
+
+    // 纵横交错的雨夜电线
+    drawCatenary(ctx, -4, BY + 22, poleL - 6, BY + 29, 7, '#0d1422');
+    drawCatenary(ctx, -4, BY + 34, poleL - 5, BY + 39, 9, '#101829');
+    drawCatenary(ctx, poleL + 8, BY + 29, poleR - 8, BY + 33, 18, '#0e1524');
+    drawCatenary(ctx, poleL + 6, BY + 39, poleR - 6, BY + 43, 21, '#121b2e');
+    drawCatenary(ctx, poleL + 4, BY + 42, poleR - 4, BY + 48, 24, '#0c121f');
+    drawCatenary(ctx, poleR + 10, BY + 33, LW + 4, BY + 26, 8, '#0e1524');
+    drawCatenary(ctx, poleR + 8, BY + 43, LW + 4, BY + 39, 10, '#121b2e');
+  }
+
+  // --- 3.4 便利店暖黄室内层（透过玻璃橱窗可见，带微视差景深！） ---
+  function buildInteriorLayer() {
+    const ctx = layerInterior.ctx;
+    const ix = BX + 84;
+    const iy = BY + 104;
+    const iw = 198;
+    const ih = 68;
+
+    // 整体暖黄温馨底色
+    rect(ctx, ix, iy, iw, ih, '#e6b873');
+    // 天花板区域（更明亮的暖白光反射）
+    rect(ctx, ix, iy, iw, 14, '#f7dca4');
+    rect(ctx, ix, iy, iw, 5, '#d9b277');
+
+    // 天花板嵌入式暖色日光灯管
+    const lightXs = [ix + 14, ix + 56, ix + 98, ix + 140, ix + 172];
+    for (const lx of lightXs) {
+      rect(ctx, lx, iy + 5, 22, 3, '#fff9e6');
+      rect(ctx, lx + 2, iy + 6, 18, 1, '#ffffff');
+      // 柔和下方亮晕
+      rect(ctx, lx - 2, iy + 8, 26, 3, 'rgba(255, 244, 206, 0.55)');
+    }
+
+    // 墙面暖色渐变分隔与货架背板
+    rect(ctx, ix, iy + 14, iw, 44, '#d8a662');
+    rect(ctx, ix, iy + 54, iw, 14, '#b88346'); // 地板暖反光
+
+    // ---- 右侧后墙：暖调玻璃冰柜饮品展示墙（柔和暖白微青，融入整体暖黄氛围） ----
+    const fx = ix + 136;
+    const fy = iy + 18;
+    rect(ctx, fx, fy, 50, 36, '#d9d8c5');
+    rect(ctx, fx + 1, fy + 1, 48, 34, '#f0edd8');
+    // 冰柜竖向玻璃门框
+    for (let gx = fx; gx <= fx + 50; gx += 16) {
+      rect(ctx, gx, fy, 2, 36, '#9c927d');
+    }
+    // 冰柜内部一层层五颜六色的像素瓶装饮料
+    const drinkColors = ['#d95b52', '#52a36e', '#e8b948', '#4d8fd6', '#f2e8d5', '#8c5a3c', '#e68345'];
+    for (let row = 0; row < 4; row++) {
+      const sy = fy + 4 + row * 8;
+      rect(ctx, fx + 2, sy + 5, 46, 1, '#b8ae97');
+      for (let col = 0; col < 10; col++) {
+        const dx = fx + 3 + col * 4 + (col >= 3 ? 2 : 0) + (col >= 6 ? 2 : 0);
+        if (dx > fx + 46) continue;
+        const c = drinkColors[(row * 5 + col * 3) % drinkColors.length];
+        rect(ctx, dx, sy + 1, 2, 4, c);
+        px(ctx, dx, sy + 1, '#fffaf0');
+      }
+    }
+
+    // ---- 左侧收银台与热乎乎的关东煮 / 肉包保温柜 ----
+    const cx = ix + 10;
+    const cy = iy + 36;
+    // 后墙香烟架（复古小格子）
+    rect(ctx, cx + 2, iy + 17, 40, 16, '#b88248');
+    rect(ctx, cx + 3, iy + 18, 38, 14, '#c99357');
+    const packCols = ['#d96459', '#5a8f7b', '#e6c26e', '#6a84b8', '#e3dfd5', '#c26d8a'];
+    for (let r = 0; r < 3; r++) {
+      for (let c = 0; c < 11; c++) {
+        rect(ctx, cx + 4 + c * 3.3, iy + 19 + r * 4, 2, 3, packCols[(r * 7 + c * 2) % packCols.length]);
+      }
+    }
+    // 收银台台面
+    rect(ctx, cx, cy + 6, 62, 18, '#9e6c3b');
+    rect(ctx, cx, cy + 5, 62, 2, '#f0ce92');
+    rect(ctx, cx + 2, cy + 9, 58, 13, '#85582e');
+    // 收银机
+    rect(ctx, cx + 12, cy - 1, 10, 6, '#4d3b2d');
+    rect(ctx, cx + 13, cy, 6, 3, '#98e0b0'); // 微亮绿色屏幕
+    // 暖橘色发光肉包/关东煮玻璃保温箱
+    rect(ctx, cx + 42, cy - 4, 15, 9, '#ffbf66');
+    rect(ctx, cx + 43, cy - 3, 13, 7, '#ffe4a8');
+    rect(ctx, cx + 42, cy - 5, 15, 1, '#a8642d');
+    rect(ctx, cx + 43, cy, 13, 1, '#d99848');
+    // 小小的白色肉包像素点
+    rect(ctx, cx + 45, cy - 2, 3, 2, '#fffaf0');
+    rect(ctx, cx + 50, cy - 2, 3, 2, '#fffaf0');
+    rect(ctx, cx + 45, cy + 2, 3, 2, '#fff4db');
+    rect(ctx, cx + 50, cy + 2, 3, 2, '#fff4db');
+
+    // ---- 中景货架（零食、便当、泡面） ----
+    const shelfBlocks = [
+      { x: ix + 78, y: iy + 26, w: 46, h: 30 },
+      { x: ix + 74, y: iy + 36, w: 54, h: 24 }
+    ];
+    const itemCols = ['#e36b58', '#f2cf66', '#6eb374', '#f2ede1', '#6999c9', '#d98a4e', '#cf7a95'];
+    for (let si = 0; si < shelfBlocks.length; si++) {
+      const sb = shelfBlocks[si];
+      rect(ctx, sb.x, sb.y, sb.w, sb.h, si === 0 ? '#a87642' : '#966636');
+      for (let row = 0; row < 3; row++) {
+        const ry = sb.y + 3 + row * 8;
+        rect(ctx, sb.x + 1, ry + 5, sb.w - 2, 1, '#f5d495');
+        for (let col = 0; col < Math.floor((sb.w - 4) / 4); col++) {
+          const ic = itemCols[(si * 11 + row * 5 + col * 3) % itemCols.length];
+          rect(ctx, sb.x + 2 + col * 4, ry + 1, 3, 4, ic);
+          px(ctx, sb.x + 2 + col * 4, ry + 1, 'rgba(255,255,255,0.45)');
+        }
+      }
+    }
+
+    // ---- 靠窗低矮杂志架（紧贴玻璃，经典日式便利店标志！） ----
+    const mx = ix + 10;
+    const my = iy + 46;
+    rect(ctx, mx, my, 74, 18, '#8a5d32');
+    rect(ctx, mx, my, 74, 2, '#d4a366');
+    const magColors = ['#e6675a', '#f2d26b', '#5ca6cc', '#88c47e', '#e89b5a', '#c97da8', '#f0ebe1', '#778cd1'];
+    for (let i = 0; i < 11; i++) {
+      const mxx = mx + 3 + i * 6.3;
+      const mc = magColors[i % magColors.length];
+      rect(ctx, mxx, my + 3, 5, 7, mc);
+      rect(ctx, mxx + 1, my + 4, 3, 2, '#fff8eb');
+      rect(ctx, mxx, my + 11, 5, 6, magColors[(i + 3) % magColors.length]);
+      rect(ctx, mxx + 1, my + 12, 3, 1, '#fff8eb');
+    }
+
+    // 室内四周柔和暗角，让内部显得深邃温暖
+    rect(ctx, ix, iy, 3, ih, 'rgba(92, 54, 22, 0.25)');
+    rect(ctx, ix + iw - 3, iy, 3, ih, 'rgba(92, 54, 22, 0.25)');
+    rect(ctx, ix, iy + ih - 5, iw, 5, 'rgba(110, 66, 28, 0.35)');
+  }
+
+  // --- 3.5 主体建筑：24H 像素便利店外立面 + 门口三台自动贩卖机 + 街角小物 ---
+  function buildStoreLayer() {
+    const ctx = layerStore.ctx;
+    const baseY = BY + 173;
+
+    // =====================================================================
+    // A. 便利店二楼暗面（旧式街角商住楼）
+    // =====================================================================
+    const sx = BX + 82;
+    const sw = 200;
+    const topY = BY + 48;
+    rect(ctx, sx + 2, topY, sw - 4, 42, '#1f293d');
+    // 顶部女儿墙
+    rect(ctx, sx, topY - 2, sw, 4, '#2c3a54');
+    rect(ctx, sx + 2, topY + 2, sw - 4, 1, '#121928');
+    // 墙面浅细砖缝
+    for (let y = topY + 8; y < topY + 40; y += 6) {
+      rect(ctx, sx + 3, y, sw - 6, 1, 'rgba(15, 22, 36, 0.35)');
+    }
+    // 二楼左、中、右三扇窗（右侧一扇透出微暖窗帘光，其余熄灯）
+    const winXs = [sx + 18, sx + 82, sx + 146];
+    for (let i = 0; i < winXs.length; i++) {
+      const wx = winXs[i];
+      const wy = topY + 12;
+      rect(ctx, wx, wy, 34, 20, '#121928');
+      if (i === 2) {
+        // 深夜还亮着微弱暖灯的住户
+        rect(ctx, wx + 2, wy + 2, 14, 16, '#8f6d47');
+        rect(ctx, wx + 18, wy + 2, 14, 16, '#75593a');
+        rect(ctx, wx + 4, wy + 4, 10, 12, '#b08858');
+      } else {
+        rect(ctx, wx + 2, wy + 2, 14, 16, '#182236');
+        rect(ctx, wx + 18, wy + 2, 14, 16, '#1b263c');
+        // 玻璃微反光
+        px(ctx, wx + 4, wy + 4, '#2a3a57');
+        px(ctx, wx + 5, wy + 5, '#2a3a57');
+      }
+      // 窗台
+      rect(ctx, wx - 2, wy + 20, 38, 2, '#2d3b54');
+    }
+    // 二楼阳台的空调外机与雨水管
+    rect(ctx, sx + 60, topY + 24, 12, 9, '#2a374f');
+    rect(ctx, sx + 62, topY + 26, 5, 5, '#151d2e');
+    rect(ctx, sx + sw - 5, topY + 2, 3, baseY - topY, '#1a2336'); // 左侧下水管
+
+    // =====================================================================
+    // B. 便利店一楼主体外框（橱窗位置留空透明，透出 Layer 3A 室内！）
+    // =====================================================================
+    // 顶部招牌框架背景（实际发光内容会叠加动态闪烁，这里画稳固结构壳体）
+    rect(ctx, BX + 80, BY + 85, 202, 24, '#1a2233');
+    // 招牌下方雨棚阴影边
+    rect(ctx, BX + 81, BY + 107, 200, 3, '#121826');
+
+    // 两侧实墙柱子
+    rect(ctx, BX + 83, BY + 109, 9, 64, '#d9cbb4');
+    rect(ctx, BX + 83, BY + 109, 2, 64, '#a69882'); // 左侧暗边
+    rect(ctx, BX + 272, BY + 109, 10, 64, '#cfc0a7');
+    rect(ctx, BX + 280, BY + 109, 2, 64, '#8f816d'); // 右侧接贩卖机暗边
+
+    // 门窗之间的主立柱
+    rect(ctx, BX + 168, BY + 109, 5, 64, '#c7b89f');
+    rect(ctx, BX + 213, BY + 109, 5, 64, '#c7b89f');
+
+    // 橱窗下方暖米色磁砖矮墙
+    // 左窗矮墙
+    rect(ctx, BX + 92, BY + 159, 76, 14, '#cbbba0');
+    rect(ctx, BX + 92, BY + 159, 76, 2, '#f0e2c6');
+    // 右窗矮墙
+    rect(ctx, BX + 218, BY + 159, 54, 14, '#c7b79c');
+    rect(ctx, BX + 218, BY + 159, 54, 2, '#ede0c4');
+    // 细密磁砖线
+    for (let tx = BX + 92; tx < BX + 272; tx += 6) {
+      if (tx >= BX + 168 && tx <= BX + 218) continue;
+      rect(ctx, tx, BY + 161, 1, 12, 'rgba(115, 98, 76, 0.28)');
+    }
+    rect(ctx, BX + 92, BY + 166, 76, 1, 'rgba(115, 98, 76, 0.25)');
+    rect(ctx, BX + 218, BY + 166, 54, 1, 'rgba(115, 98, 76, 0.25)');
+
+    // ---- 玻璃橱窗金属窗框与玻璃质感 ----
+    // 左大橱窗框 (92..168, 110..159)
+    rect(ctx, BX + 92, BY + 110, 76, 2, '#5a6675');
+    rect(ctx, BX + 129, BY + 110, 2, 49, '#5a6675'); // 中竖棂
+    rect(ctx, BX + 92, BY + 157, 76, 2, '#697585');
+    // 右大橱窗框 (218..272, 110..159)
+    rect(ctx, BX + 218, BY + 110, 54, 2, '#5a6675');
+    rect(ctx, BX + 244, BY + 110, 2, 49, '#5a6675');
+    rect(ctx, BX + 218, BY + 157, 54, 2, '#697585');
+
+    // 自动玻璃感应门 (173..213, 111..173)
+    rect(ctx, BX + 173, BY + 110, 40, 2, '#4a5563');
+    rect(ctx, BX + 173, BY + 110, 2, 63, '#586473');
+    rect(ctx, BX + 211, BY + 110, 2, 63, '#586473');
+    rect(ctx, BX + 192, BY + 112, 2, 61, '#4b5563'); // 双开门中缝
+    // 门框中横条（经典防撞横杆 + 24H贴纸）
+    rect(ctx, BX + 175, BY + 141, 17, 2, '#d9cfc0');
+    rect(ctx, BX + 194, BY + 141, 17, 2, '#d9cfc0');
+    // 玻璃上微弱对角线反光
+    for (let i = 0; i < 14; i++) {
+      px(ctx, BX + 98 + i, BY + 128 - i, 'rgba(255, 252, 240, 0.16)');
+      px(ctx, BX + 102 + i, BY + 128 - i, 'rgba(255, 252, 240, 0.09)');
+      px(ctx, BX + 224 + i, BY + 128 - i, 'rgba(255, 252, 240, 0.14)');
+      px(ctx, BX + 178 + i * 0.7, BY + 132 - i, 'rgba(255, 252, 240, 0.14)');
+    }
+    // 玻璃窗角贴的小海报（热咖啡 / 关东煮小广告贴纸）
+    rect(ctx, BX + 253, BY + 116, 13, 16, 'rgba(247, 232, 200, 0.92)');
+    rect(ctx, BX + 255, BY + 118, 9, 4, '#d96443');
+    rect(ctx, BX + 255, BY + 124, 9, 6, '#e8b35a');
+    // 门上小小的 OPEN 发光霓虹吊牌
+    rect(ctx, BX + 178, BY + 121, 12, 6, '#291f24');
+    rect(ctx, BX + 179, BY + 122, 10, 4, '#ff9c6e');
+    rect(ctx, BX + 180, BY + 123, 8, 2, '#fff0d4');
+
+    // 门口地垫
+    rect(ctx, BX + 174, baseY - 1, 38, 3, '#3b4a4d');
+    rect(ctx, BX + 176, baseY, 34, 1, '#586e70');
+
+    // =====================================================================
+    // C. 门口街角小物：伞架、复古小看板、街角路灯与凸面反光镜
+    // =====================================================================
+    // 门口右侧透明伞架（插着两把塑料伞）
+    const ux = BX + 215;
+    rect(ctx, ux, baseY - 12, 8, 12, '#3d4859');
+    rect(ctx, ux + 1, baseY - 11, 6, 10, '#27303d');
+    // 两把透明伞柄
+    drawLinePx(ctx, ux + 2, baseY - 11, ux + 1, baseY - 18, '#cfd8e3');
+    px(ctx, ux, baseY - 18, '#cfd8e3');
+    drawLinePx(ctx, ux + 5, baseY - 11, ux + 6, baseY - 17, '#a8c2d6');
+    px(ctx, ux + 7, baseY - 17, '#a8c2d6');
+
+    // 左侧门口小小木质黑板立牌（热咖啡）
+    const ax = BX + 85;
+    rect(ctx, ax, baseY - 15, 9, 14, '#594230');
+    rect(ctx, ax + 1, baseY - 14, 7, 10, '#2a3338');
+    rect(ctx, ax + 2, baseY - 12, 5, 2, '#f0c478');
+    rect(ctx, ax + 2, baseY - 9, 4, 1, '#cfd9d5');
+    rect(ctx, ax + 2, baseY - 7, 5, 1, '#cfd9d5');
+
+    // 左侧街角路灯柱 + 标志性橙边凸面反光镜（カーブミラー）
+    const lampX = BX + 62;
+    rect(ctx, lampX, BY + 56, 3, baseY - (BY + 56) + 4, '#222d42');
+    rect(ctx, lampX + 2, BY + 56, 1, baseY - (BY + 56) + 4, '#364763');
+    // 路灯弯臂与灯罩
+    rect(ctx, lampX - 10, BY + 55, 12, 2, '#2d3b54');
+    rect(ctx, lampX - 13, BY + 56, 7, 3, '#3c4c69');
+    rect(ctx, lampX - 12, BY + 59, 5, 2, '#ffe099'); // 暖黄钠灯光
+    rect(ctx, lampX - 11, BY + 59, 3, 1, '#fff8e0');
+    // 凸面反光镜
+    rect(ctx, lampX - 6, BY + 109, 6, 2, '#34425c');
+    // 橙色圆框 + 反射暗夜与暖光的镜面
+    const cmx = lampX - 9, cmy = BY + 109;
+    for (let dy = -5; dy <= 5; dy++) {
+      for (let dx = -5; dx <= 5; dx++) {
+        const d2 = dx * dx + dy * dy;
+        if (d2 <= 26 && d2 >= 15) {
+          px(ctx, cmx + dx, cmy + dy, '#c96b38');
+        } else if (d2 < 15) {
+          px(ctx, cmx + dx, cmy + dy, dx > 0 && dy > -1 ? '#6e655c' : '#2a3952');
+        }
+      }
+    }
+    px(ctx, cmx - 2, cmy - 2, '#8da8cc');
+    px(ctx, cmx + 1, cmy + 1, '#e8be7d');
+
+    // 左侧街角复古邮筒 / 小垃圾箱
+    rect(ctx, BX + 49, baseY - 18, 9, 17, '#7d2f33');
+    rect(ctx, BX + 48, baseY - 19, 11, 3, '#9c3c40');
+    rect(ctx, BX + 50, baseY - 15, 7, 2, '#2b1316');
+    rect(ctx, BX + 51, baseY - 1, 5, 2, '#1e2533');
+
+    // =====================================================================
+    // D. 门口三台柔和发光的自动贩卖机（位于便利店右侧檐下）
+    // =====================================================================
+    // 贩卖机上方简易小遮雨棚
+    rect(ctx, BX + 282, BY + 114, 86, 5, '#1e283b');
+    rect(ctx, BX + 282, BY + 118, 86, 2, '#121826');
+    rect(ctx, BX + 283, BY + 115, 84, 1, '#31415e');
+    // 贩卖机后侧连接暗墙
+    rect(ctx, BX + 282, BY + 119, 84, 54, '#182133');
+
+    // 绘制三台各具特色的像素自动贩卖机
+    drawVendingMachine(ctx, BX + 286, BY + 121, 25, 52, {
+      body: '#cbd9e3',
+      bodyShade: '#8fa3b5',
+      headerBg: '#3f7ea8',
+      headerText: 'COLD',
+      glassBg: '#d8f6ff',
+      glassTop: '#f2fcff',
+      accent: '#7cd8f5',
+      stripColors: ['#4ea4e0', '#4ea4e0', '#e06753'],
+      cans: ['#d9534f', '#4ea8de', '#5cb85c', '#f0ad4e', '#eef5f7', '#5a82c4']
+    });
+
+    drawVendingMachine(ctx, BX + 314, BY + 123, 25, 50, {
+      body: '#dfd3c3',
+      bodyShade: '#a69682',
+      headerBg: '#b8623d',
+      headerText: 'HOT',
+      glassBg: '#ffecd0',
+      glassTop: '#fff9eb',
+      accent: '#ffc980',
+      stripColors: ['#e06a4c', '#e06a4c', '#4ea4e0'],
+      cans: ['#7a4d34', '#d98c4a', '#e8c468', '#c95342', '#e8ded1', '#6a8f5e']
+    });
+
+    drawVendingMachine(ctx, BX + 342, BY + 126, 22, 47, {
+      body: '#c8dbd4',
+      bodyShade: '#8aa39a',
+      headerBg: '#3b8273',
+      headerText: 'TEA',
+      glassBg: '#dafae9',
+      glassTop: '#f2fff8',
+      accent: '#8de3c4',
+      stripColors: ['#4db896', '#4ea4e0', '#e06a4c'],
+      cans: ['#59a66b', '#87c77a', '#e6c86e', '#589cc4', '#e38068', '#f0ede4']
+    });
+
+    // 最右侧自动贩卖机专用空罐回收箱
+    const bx = BX + 365;
+    rect(ctx, bx, baseY - 19, 9, 19, '#394b5e');
+    rect(ctx, bx + 1, baseY - 18, 7, 17, '#4f657d');
+    rect(ctx, bx + 2, baseY - 16, 2, 2, '#161e2b');
+    rect(ctx, bx + 5, baseY - 16, 2, 2, '#161e2b');
+    rect(ctx, bx + 2, baseY - 11, 5, 4, '#88b8d6');
+  }
+
+  function drawVendingMachine(ctx, x, y, w, h, cfg) {
+    // 机身外壳与立体阴影
+    rect(ctx, x, y, w, h, cfg.body);
+    rect(ctx, x + w - 2, y, 2, h, cfg.bodyShade);
+    rect(ctx, x, y, 1, h, '#e8f0f5');
+    rect(ctx, x, y + h - 2, w, 2, '#222b3a'); // 底座黑边
+
+    // 顶部品牌发光灯带
+    rect(ctx, x + 2, y + 2, w - 5, 6, cfg.headerBg);
+    rect(ctx, x + 3, y + 3, w - 7, 4, cfg.accent);
+    // 简笔像素点状标志
+    for (let i = 0; i < w - 10; i += 3) {
+      rect(ctx, x + 4 + i, y + 4, 2, 2, '#ffffff');
+    }
+
+    // 主展示玻璃橱窗（柔和内发光）
+    const gx = x + 2;
+    const gy = y + 9;
+    const gw = w - 5;
+    const gh = 22;
+    rect(ctx, gx, gy, gw, gh, cfg.glassBg);
+    rect(ctx, gx, gy, gw, 3, cfg.glassTop);
+
+    // 3排迷你像素饮品罐 + 冷热指示灯条
+    for (let row = 0; row < 3; row++) {
+      const ry = gy + 2 + row * 7;
+      const cols = Math.floor((gw - 2) / 3);
+      for (let c = 0; c < cols; c++) {
+        const cc = cfg.cans[(row * 3 + c) % cfg.cans.length];
+        rect(ctx, gx + 1 + c * 3, ry, 2, 4, cc);
+        px(ctx, gx + 1 + c * 3, ry, 'rgba(255,255,255,0.6)');
+      }
+      // 隔板与柔和发光按键条（蓝=冷 / 红=热）
+      rect(ctx, gx, ry + 4, gw, 1, '#9ab0bd');
+      rect(ctx, gx + 1, ry + 5, gw - 2, 1, cfg.stripColors[row]);
+    }
+
+    // 中间操作面板（投币口、小绿/红发光灯、退币杆）
+    const py = gy + gh + 2;
+    rect(ctx, x + 2, py, w - 5, 6, '#394657');
+    rect(ctx, x + 4, py + 1, 5, 3, cfg.glassTop); // 柔和液晶显示
+    px(ctx, x + w - 7, py + 2, '#ff7b6b'); // 投币口微亮红点
+    rect(ctx, x + w - 5, py + 1, 1, 3, '#cbd5e0');
+
+    // 底部取物口（内部深阴影 + 柔和顶部反光）
+    const ky = py + 8;
+    const kh = Math.max(6, y + h - ky - 3);
+    rect(ctx, x + 3, ky, w - 7, kh, '#171f2e');
+    rect(ctx, x + 3, ky, w - 7, 1, cfg.bodyShade);
+    rect(ctx, x + 4, ky + 1, w - 9, 1, 'rgba(255,255,255,0.12)');
+  }
+
+  // --- 3.6 湿润人行道与深夜柏油马路基础层 ---
+  function buildRoadLayer() {
+    const ctx = layerRoad.ctx;
+    const rand = mulberry32(9107);
+    const swY = BY + 172;
+    const curbY = BY + 185;
+
+    // 人行道湿润地砖
+    rect(ctx, 0, swY, LW, curbY - swY, '#1c2436');
+    for (let x = 0; x < LW; x += 10) {
+      rect(ctx, x, swY, 1, curbY - swY, '#141b29');
+    }
+    rect(ctx, 0, swY + 6, LW, 1, '#151c2b');
+    // 门前微弱湿润暖光映在人行道上
+    rect(ctx, BX + 84, swY, 198, curbY - swY, 'rgba(255, 206, 128, 0.14)');
+    rect(ctx, BX + 170, swY, 44, curbY - swY, 'rgba(255, 224, 158, 0.16)');
+    // 贩卖机前人行道淡蓝/淡暖反光
+    rect(ctx, BX + 286, swY, 25, curbY - swY, 'rgba(130, 224, 255, 0.16)');
+    rect(ctx, BX + 314, swY, 25, curbY - swY, 'rgba(255, 204, 138, 0.16)');
+    rect(ctx, BX + 342, swY, 22, curbY - swY, 'rgba(148, 232, 202, 0.15)');
+
+    // 暗淡的黄色盲道（点字ブロック）
+    rect(ctx, BX + 16, curbY - 5, 390, 3, 'rgba(166, 138, 72, 0.34)');
+    for (let x = BX + 18; x < BX + 404; x += 6) {
+      rect(ctx, x, curbY - 4, 3, 1, 'rgba(214, 184, 106, 0.32)');
+    }
+
+    // 路缘石（Curb）
+    rect(ctx, 0, curbY, LW, 2, '#2d3952');
+    rect(ctx, 0, curbY + 2, LW, 2, '#111724');
+
+    // 湿滑深夜柏油马路
+    const roadY = curbY + 4;
+    rect(ctx, 0, roadY, LW, LH - roadY, '#0d1320');
+    // 细腻沥青颗粒质感
+    for (let i = 0; i < 1600; i++) {
+      const rx = Math.floor(rand() * LW);
+      const ry = roadY + Math.floor(rand() * (LH - roadY));
+      const c = rand() > 0.5 ? '#121a2b' : '#090d17';
+      px(ctx, rx, ry, c);
+    }
+
+    // 褪色的白色斑马线 / 路边停车白线
+    rect(ctx, 0, roadY + 4, LW, 1, 'rgba(148, 166, 194, 0.18)');
+    // 左侧街角淡淡的斑马线
+    for (let i = 0; i < 4; i++) {
+      const zy = roadY + 11 + i * 10;
+      rect(ctx, BX - 12 - i * 4, zy, 34, 4, 'rgba(130, 148, 178, 0.15)');
+    }
+    // 路边排水井盖
+    rect(ctx, BX + 276, roadY + 2, 10, 3, '#1a2336');
+    rect(ctx, BX + 278, roadY + 3, 2, 1, '#090d16');
+    rect(ctx, BX + 282, roadY + 3, 2, 1, '#090d16');
+  }
+
+  // --- 3.7 极克制的前景边缘元素（增强晃动时的空间纵深，绝不遮挡主体） ---
+  function buildForegroundLayer() {
+    const ctx = layerForeground.ctx;
+    // 左上角垂落的一缕极暗雨夜树叶剪影
+    const leafSpots = [
+      [14, 10, 14, 6], [4, 16, 18, 7], [22, 14, 12, 5],
+      [10, 22, 16, 6], [28, 19, 10, 4], [2, 26, 12, 6]
+    ];
+    for (const [x, y, w, h] of leafSpots) {
+      rect(ctx, x, y, w, h, '#090e1a');
+      rect(ctx, x + 2, y + h - 1, w - 4, 1, '#121c30');
+    }
+    // 右上角一根极近的斜拉暗电线
+    drawLinePx(ctx, LW - 88, 0, LW, 28, '#070b14');
+    drawLinePx(ctx, LW - 88, 1, LW, 29, '#0b111f');
+
+    // 左下角边缘一个模糊低矮的路边防撞小柱子剪影
+    rect(ctx, 18, LH - 34, 7, 36, '#080c16');
+    rect(ctx, 24, LH - 34, 1, 36, '#182338');
+    rect(ctx, 19, LH - 28, 5, 2, 'rgba(220, 178, 108, 0.28)'); // 反光贴微亮
+
+    // 右下角极低矮的暗色路缘剪影
+    rect(ctx, LW - 26, LH - 26, 8, 28, '#080c16');
+    rect(ctx, LW - 26, LH - 26, 1, 28, '#172838');
+    rect(ctx, LW - 25, LH - 20, 5, 2, 'rgba(130, 210, 230, 0.22)');
+  }
+
+  buildSkyLayer();
+  buildFarCityLayer();
+  buildMidStreetLayer();
+  buildInteriorLayer();
+  buildStoreLayer();
+  buildRoadLayer();
+  buildForegroundLayer();
+
+  // =========================================================================
+  // 4. 动态元素状态：招牌闪烁、小猫、关东煮蒸汽、像素雨、水洼涟漪、自动贩卖机微脉动
+  // =========================================================================
+  // 招牌3段灯管（左、中、右）与左侧竖牌的亮度状态
+  const signState = {
+    flickerTimer: 0,
+    flickerDuration: 0,
+    tubes: [1, 1, 1], // 3段灯管亮度 0..1
+    sideTube: 1,      // 左侧竖向24H招牌亮度
+    pattern: [],
+    ambientFlickerCooldown: 14 + Math.random() * 16
+  };
+
+  function triggerSignFlicker(strong = true) {
+    signState.flickerDuration = strong ? 1.55 : 0.75;
+    signState.flickerTimer = signState.flickerDuration;
+    // 生成怀旧日光灯镇流器真实微闪烁曲线关键帧
+    if (strong) {
+      signState.pattern = [
+        { t: 0.00, l: 0.35, m: 0.22, r: 0.55, s: 0.25 },
+        { t: 0.06, l: 0.92, m: 0.85, r: 0.95, s: 0.80 },
+        { t: 0.12, l: 0.25, m: 0.18, r: 0.42, s: 0.20 },
+        { t: 0.18, l: 0.48, m: 0.30, r: 0.88, s: 0.40 },
+        { t: 0.25, l: 0.98, m: 0.92, r: 1.00, s: 0.95 },
+        { t: 0.34, l: 0.60, m: 0.28, r: 0.72, s: 0.50 },
+        { t: 0.41, l: 0.96, m: 0.94, r: 0.98, s: 0.92 },
+        { t: 0.55, l: 0.88, m: 0.58, r: 0.95, s: 0.85 },
+        { t: 0.62, l: 1.00, m: 0.96, r: 1.00, s: 1.00 },
+        { t: 0.78, l: 0.94, m: 0.82, r: 0.98, s: 0.92 },
+        { t: 0.86, l: 1.00, m: 1.00, r: 1.00, s: 1.00 },
+        { t: 1.00, l: 1.00, m: 1.00, r: 1.00, s: 1.00 }
+      ];
+    } else {
+      signState.pattern = [
+        { t: 0.00, l: 0.78, m: 0.62, r: 0.92, s: 0.85 },
+        { t: 0.22, l: 0.96, m: 0.94, r: 0.98, s: 0.96 },
+        { t: 0.42, l: 0.84, m: 0.70, r: 0.95, s: 0.88 },
+        { t: 0.68, l: 1.00, m: 0.98, r: 1.00, s: 1.00 },
+        { t: 1.00, l: 1.00, m: 1.00, r: 1.00, s: 1.00 }
+      ];
+    }
+  }
+
+  function updateSignFlicker(dt) {
+    if (signState.flickerTimer > 0) {
+      signState.flickerTimer = Math.max(0, signState.flickerTimer - dt);
+      const progress = 1 - signState.flickerTimer / signState.flickerDuration;
+      const pat = signState.pattern;
+      let k0 = pat[0], k1 = pat[pat.length - 1];
+      for (let i = 0; i < pat.length - 1; i++) {
+        if (progress >= pat[i].t && progress <= pat[i + 1].t) {
+          k0 = pat[i];
+          k1 = pat[i + 1];
+          break;
+        }
+      }
+      const f = k1.t === k0.t ? 1 : (progress - k0.t) / (k1.t - k0.t);
+      signState.tubes[0] = lerp(k0.l, k1.l, f);
+      signState.tubes[1] = lerp(k0.m, k1.m, f);
+      signState.tubes[2] = lerp(k0.r, k1.r, f);
+      signState.sideTube = lerp(k0.s, k1.s, f);
+    } else {
+      signState.tubes[0] = 1;
+      signState.tubes[1] = 1;
+      signState.tubes[2] = 1;
+      signState.sideTube = 1;
+
+      // 偶尔自己极其轻微地闪一下，增添老旧深夜便利店的呼吸感
+      signState.ambientFlickerCooldown -= dt;
+      if (signState.ambientFlickerCooldown <= 0) {
+        signState.ambientFlickerCooldown = 22 + Math.random() * 24;
+        triggerSignFlicker(false);
+      }
+    }
+  }
+
+  // 自动贩卖机轻微呼吸 & 点击微光反馈
+  const vendingPulse = [0, 0, 0];
+
+  // 动态招牌与屋檐下小猫、滴水合成层（像素分辨率）
+  const dynamicStoreLayer = createLayer();
+  const dynamicInteriorOverlay = createLayer();
+  const dynamicRoadOverlay = createLayer();
+  const rainLayerFar = createLayer();
+  const rainLayerNear = createLayer();
+
+  // 小猫状态（蜷缩在左窗暖光下的屋檐干爽处）
+  const catState = {
+    blinkTimer: 2.8,
+    blinkLeft: 0,
+    tailPhase: 0
+  };
+
+  // 关东煮/肉包柜温暖微蒸汽
+  const steamParticles = Array.from({ length: 7 }, (_, i) => ({
+    x: BX + 130 + (i % 4) * 3,
+    y: BY + 137 - Math.random() * 10,
+    vy: 3.5 + Math.random() * 2.5,
+    phase: Math.random() * Math.PI * 2,
+    life: Math.random()
+  }));
+
+  // 屋檐滴水珠
+  const awningDrips = Array.from({ length: 8 }, (_, i) => ({
+    x: BX + 86 + i * 28 + Math.floor(Math.random() * 8),
+    y: BY + 109,
+    vy: 0,
+    wait: Math.random() * 3.5,
+    falling: false
+  }));
+
+  // 像素细雨粒子（远景细雨 + 近景细雨）
+  const farRain = Array.from({ length: 110 }, () => ({
+    x: Math.random() * LW,
+    y: Math.random() * LH,
+    len: 4 + Math.random() * 4,
+    speed: 115 + Math.random() * 45,
+    alpha: 0.14 + Math.random() * 0.16
+  }));
+
+  const nearRain = Array.from({ length: 120 }, () => ({
+    x: Math.random() * LW,
+    y: Math.random() * LH,
+    len: 6 + Math.random() * 6,
+    speed: 175 + Math.random() * 65,
+    alpha: 0.22 + Math.random() * 0.24
+  }));
+
+  // 雨滴落地与砸在雨棚/贩卖机顶的微小水花
+  const splashes = [];
+  const ripples = Array.from({ length: 16 }, () => ({
+    x: BX + Math.random() * VIEW_W,
+    y: BY + 190 + Math.random() * 54,
+    r: Math.random() * 7,
+    maxR: 4 + Math.random() * 5,
+    speed: 5.5 + Math.random() * 4
+  }));
+
+  // =========================================================================
+  // 5. 鼠标视差（丝滑惯性阻尼 + 静止时极轻呼吸感）
+  // =========================================================================
+  const pointer = {
+    targetX: 0,
+    targetY: 0,
+    x: 0,
+    y: 0,
+    active: false,
+    idleTime: 0
+  };
+
+  window.addEventListener('mousemove', (e) => {
+    const nx = (e.clientX / Math.max(1, winW)) * 2 - 1;
+    const ny = (e.clientY / Math.max(1, winH)) * 2 - 1;
+    pointer.targetX = clamp(nx, -1, 1);
+    pointer.targetY = clamp(ny, -1, 1);
+    pointer.active = true;
+    pointer.idleTime = 0;
+
+    // 悬停招牌或贩卖机时给极克制的手型提示
+    const hit = hitTestScene(e.clientX, e.clientY);
+    sceneCanvas.style.cursor = hit ? 'pointer' : 'default';
+  }, { passive: true });
+
+  window.addEventListener('mouseleave', () => {
+    pointer.targetX = 0;
+    pointer.targetY = 0;
+  });
+
+  window.addEventListener('touchmove', (e) => {
+    if (e.touches && e.touches.length > 0) {
+      const t = e.touches[0];
+      pointer.targetX = clamp((t.clientX / Math.max(1, winW)) * 2 - 1, -1, 1);
+      pointer.targetY = clamp((t.clientY / Math.max(1, winH)) * 2 - 1, -1, 1);
+      pointer.active = true;
+      pointer.idleTime = 0;
+    }
+  }, { passive: true });
+
+  // 各层视差偏移量（以虚拟像素为单位，确保始终小于 BX=36, BY=20）
+  const PARALLAX = {
+    sky:      { x: 3.5,  y: 1.5 },
+    farCity:  { x: 7.5,  y: 3.0 },
+    mid:      { x: 13.0, y: 5.0 },
+    interior: { x: 17.5, y: 6.5 }, // 比店面外墙略深，晃动鼠标时能产生真实的“透过橱窗望进店内”的层次！
+    store:    { x: 21.0, y: 7.5 },
+    road:     { x: 22.5, y: 8.2 },
+    fg:       { x: 31.0, y: 11.5 }
+  };
+
+  function screenToStorePixel(clientX, clientY) {
+    const offX = -pointer.x * PARALLAX.store.x;
+    const offY = -pointer.y * PARALLAX.store.y;
+    const vx = (clientX - originX) / pixelScale - offX;
+    const vy = (clientY - originY) / pixelScale - offY;
+    return { x: vx, y: vy };
+  }
+
+  function inRect(pt, r) {
+    return pt.x >= r.x && pt.x <= r.x + r.w && pt.y >= r.y && pt.y <= r.y + r.h;
+  }
+
+  function hitTestScene(clientX, clientY) {
+    const pt = screenToStorePixel(clientX, clientY);
+    if (inRect(pt, SIGN_MAIN_RECT) || inRect(pt, SIGN_SIDE_RECT)) {
+      return { type: 'sign' };
+    }
+    for (let i = 0; i < VENDING_RECTS.length; i++) {
+      if (inRect(pt, VENDING_RECTS[i])) {
+        return { type: 'vending', index: i };
+      }
+    }
+    return null;
+  }
+
+  // =========================================================================
+  // 6. 极轻的雨声白噪音与柔和环境音效（纯 Web Audio API 合成，零外部依赖）
+  // =========================================================================
+  const sound = {
+    ctx: null,
+    masterGain: null,
+    started: false,
+    muted: false,
+    dropTimer: null
+  };
+
+  function createPinkNoiseBuffer(actx, seconds = 6) {
+    const len = Math.floor(actx.sampleRate * seconds);
+    const buffer = actx.createBuffer(2, len, actx.sampleRate);
+    for (let ch = 0; ch < 2; ch++) {
+      const data = buffer.getChannelData(ch);
+      let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
+      let brown = 0;
+      for (let i = 0; i < len; i++) {
+        const white = Math.random() * 2 - 1;
+        b0 = 0.99886 * b0 + white * 0.0555179;
+        b1 = 0.99332 * b1 + white * 0.0750759;
+        b2 = 0.96900 * b2 + white * 0.1538520;
+        b3 = 0.86650 * b3 + white * 0.3104856;
+        b4 = 0.55000 * b4 + white * 0.5329522;
+        b5 = -0.7616 * b5 - white * 0.0168980;
+        const pink = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362) * 0.055;
+        b6 = white * 0.115926;
+
+        brown = (brown + 0.02 * white) / 1.02;
+        data[i] = pink * 0.78 + brown * 0.62;
+      }
+      // 柔和首尾交叉平滑，杜绝循环咔嗒声
+      const fadeSamples = Math.floor(actx.sampleRate * 0.35);
+      for (let i = 0; i < fadeSamples; i++) {
+        const t = i / fadeSamples;
+        const idxEnd = len - fadeSamples + i;
+        data[i] = data[i] * t + data[idxEnd] * (1 - t);
+      }
+    }
+    return buffer;
+  }
+
+  function initAudio() {
+    if (sound.started) {
+      if (sound.ctx && sound.ctx.state === 'suspended') {
+        sound.ctx.resume().catch(() => {});
+      }
+      return;
+    }
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return;
+
+    try {
+      const actx = new AudioCtx();
+      sound.ctx = actx;
+
+      const master = actx.createGain();
+      master.gain.setValueAtTime(0.0001, actx.currentTime);
+      master.connect(actx.destination);
+      sound.masterGain = master;
+
+      const rainBuf = createPinkNoiseBuffer(actx, 7);
+
+      // 主体柔和细雨层（低通柔化，像隔着玻璃或在屋檐下听雨）
+      const bedSrc = actx.createBufferSource();
+      bedSrc.buffer = rainBuf;
+      bedSrc.loop = true;
+
+      const hp = actx.createBiquadFilter();
+      hp.type = 'highpass';
+      hp.frequency.value = 135;
+
+      const lp = actx.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.frequency.value = 1280;
+      lp.Q.value = 0.55;
+
+      const bedGain = actx.createGain();
+      bedGain.gain.value = 0.42;
+
+      bedSrc.connect(hp);
+      hp.connect(lp);
+      lp.connect(bedGain);
+      bedGain.connect(master);
+      bedSrc.start();
+
+      // 极轻的细雨沙沙层（带缓慢呼吸起伏，模拟微风吹动细雨）
+      const mistSrc = actx.createBufferSource();
+      mistSrc.buffer = rainBuf;
+      mistSrc.loop = true;
+      mistSrc.playbackRate.value = 1.07;
+
+      const bp = actx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.value = 2600;
+      bp.Q.value = 0.9;
+
+      const mistGain = actx.createGain();
+      mistGain.gain.value = 0.048;
+
+      const lfo = actx.createOscillator();
+      lfo.type = 'sine';
+      lfo.frequency.value = 0.07;
+      const lfoGain = actx.createGain();
+      lfoGain.gain.value = 0.018;
+      lfo.connect(lfoGain);
+      lfoGain.connect(mistGain.gain);
+      lfo.start();
+
+      mistSrc.connect(bp);
+      bp.connect(mistGain);
+      mistGain.connect(master);
+      mistSrc.start();
+
+      // 几乎不可察觉的深夜便利店/贩卖机柔和暖底噪（120Hz极微弱电流暖鸣）
+      const humOsc = actx.createOscillator();
+      humOsc.type = 'sine';
+      humOsc.frequency.value = 110;
+      const humGain = actx.createGain();
+      humGain.gain.value = 0.0055;
+      humOsc.connect(humGain);
+      humGain.connect(master);
+      humOsc.start();
+
+      // 轻柔渐入至极克制的舒适音量
+      master.gain.exponentialRampToValueAtTime(0.24, actx.currentTime + 2.4);
+      sound.started = true;
+
+      // 偶尔轻落一两声柔和的雨滴打在雨棚上的细微声响
+      scheduleSoftRaindrop();
+    } catch (_) {
+      // 静默忽略不支持音频的环境
+    }
+  }
+
+  function scheduleSoftRaindrop() {
+    if (!sound.ctx) return;
+    const delay = 220 + Math.random() * 880;
+    sound.dropTimer = setTimeout(() => {
+      if (sound.ctx && sound.ctx.state === 'running' && !sound.muted && !document.hidden) {
+        playMicroRaindrop();
+      }
+      scheduleSoftRaindrop();
+    }, delay);
+  }
+
+  function playMicroRaindrop() {
+    const actx = sound.ctx;
+    if (!actx || !sound.masterGain) return;
+    const now = actx.currentTime;
+
+    const osc = actx.createOscillator();
+    const g = actx.createGain();
+    const pan = actx.createStereoPanner ? actx.createStereoPanner() : null;
+
+    const baseFreq = 720 + Math.random() * 1450;
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(baseFreq, now);
+    osc.frequency.exponentialRampToValueAtTime(baseFreq * 0.62, now + 0.032);
+
+    const peak = 0.006 + Math.random() * 0.011;
+    g.gain.setValueAtTime(0.0001, now);
+    g.gain.linearRampToValueAtTime(peak, now + 0.004);
+    g.gain.exponentialRampToValueAtTime(0.0001, now + 0.04);
+
+    if (pan) {
+      pan.pan.value = (Math.random() * 2 - 1) * 0.85;
+      osc.connect(g);
+      g.connect(pan);
+      pan.connect(sound.masterGain);
+    } else {
+      osc.connect(g);
+      g.connect(sound.masterGain);
+    }
+    osc.start(now);
+    osc.stop(now + 0.045);
+  }
+
+  // 点击招牌时极轻的日光灯管启辉器细微嗡鸣与嗒声
+  function playFluorescentFlickerSound() {
+    const actx = sound.ctx;
+    if (!actx || actx.state !== 'running' || sound.muted || !sound.masterGain) return;
+    const now = actx.currentTime;
+
+    const ticks = [0.0, 0.14, 0.34, 0.56];
+    for (const offset of ticks) {
+      const t = now + offset;
+      const osc = actx.createOscillator();
+      const filt = actx.createBiquadFilter();
+      const g = actx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(120, t);
+      filt.type = 'bandpass';
+      filt.frequency.value = 1850 + Math.random() * 400;
+      filt.Q.value = 3.2;
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.linearRampToValueAtTime(0.022, t + 0.008);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.09);
+      osc.connect(filt);
+      filt.connect(g);
+      g.connect(sound.masterGain);
+      osc.start(t);
+      osc.stop(t + 0.1);
+    }
+  }
+
+  // 点击贩卖机时极轻柔的柔和暖嗡反馈
+  function playVendingSoftHum() {
+    const actx = sound.ctx;
+    if (!actx || actx.state !== 'running' || sound.muted || !sound.masterGain) return;
+    const now = actx.currentTime;
+    const osc = actx.createOscillator();
+    const g = actx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(148, now);
+    g.gain.setValueAtTime(0.0001, now);
+    g.gain.linearRampToValueAtTime(0.018, now + 0.06);
+    g.gain.exponentialRampToValueAtTime(0.0001, now + 0.42);
+    osc.connect(g);
+    g.connect(sound.masterGain);
+    osc.start(now);
+    osc.stop(now + 0.45);
+  }
+
+  // 尝试自动柔和启动，并监听首次交互无缝解锁
+  function unlockAndHideWhisper() {
+    initAudio();
+    if (sound.ctx && sound.ctx.state === 'suspended') {
+      sound.ctx.resume().catch(() => {});
+    }
+    whisperEl.classList.remove('visible');
+    whisperEl.classList.add('hidden');
+  }
+
+  // 优雅淡入极轻提示，数秒后自动彻底隐去
+  setTimeout(() => {
+    if (!sound.started || (sound.ctx && sound.ctx.state === 'suspended')) {
+      whisperEl.classList.add('visible');
+    }
+  }, 600);
+  setTimeout(() => {
+    whisperEl.classList.remove('visible');
+    whisperEl.classList.add('hidden');
+  }, 6800);
+
+  // 点击交互：任意处解锁轻雨声；点招牌灯微闪烁；点贩卖机轻微脉动
+  window.addEventListener('pointerdown', (e) => {
+    unlockAndHideWhisper();
+    const hit = hitTestScene(e.clientX, e.clientY);
+    if (hit && hit.type === 'sign') {
+      triggerSignFlicker(true);
+      playFluorescentFlickerSound();
+    } else if (hit && hit.type === 'vending') {
+      vendingPulse[hit.index] = 1.0;
+      playVendingSoftHum();
+    }
+  });
+
+  // 低调的键盘静音开关（M 键），界面不放任何按钮
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'm' || e.key === 'M') {
+      if (!sound.started) {
+        unlockAndHideWhisper();
+        return;
+      }
+      sound.muted = !sound.muted;
+      if (sound.ctx && sound.masterGain) {
+        const now = sound.ctx.currentTime;
+        sound.masterGain.gain.cancelScheduledValues(now);
+        sound.masterGain.gain.setValueAtTime(Math.max(0.0001, sound.masterGain.gain.value), now);
+        sound.masterGain.gain.exponentialRampToValueAtTime(sound.muted ? 0.0001 : 0.24, now + 0.5);
+      }
+    }
+  });
+
+  // =========================================================================
+  // 7. 动态像素图层渲染（招牌灯、小猫、蒸汽、水洼倒影、像素雨）
+  // =========================================================================
+  function renderDynamicStore(time, dt) {
+    const ctx = dynamicStoreLayer.ctx;
+    ctx.clearRect(0, 0, LW, LH);
+
+    // -----------------------------------------------------------------
+    // A. 便利店招牌灯箱（3段独立亮度，点击时产生真实镇流器微闪烁）
+    // -----------------------------------------------------------------
+    const sx = BX + 82;
+    const sy = BY + 86;
+    const sw = 198;
+    const sh = 20;
+    const segW = Math.ceil(sw / 3);
+
+    for (let seg = 0; seg < 3; seg++) {
+      const b = signState.tubes[seg];
+      const segX = sx + seg * segW;
+      const curW = seg === 2 ? sw - seg * segW : segW;
+
+      // 灯箱暖奶油底色随亮度变化
+      const bgR = Math.round(lerp(56, 255, b));
+      const bgG = Math.round(lerp(50, 244, b));
+      const bgB = Math.round(lerp(52, 214, b));
+      rect(ctx, segX, sy, curW, sh, `rgb(${bgR},${bgG},${bgB})`);
+
+      // 经典怀旧便利店三色条纹：暖橙、奶油、深青绿
+      const oR = Math.round(lerp(54, 226, b)), oG = Math.round(lerp(36, 118, b)), oB = Math.round(lerp(32, 62, b));
+      rect(ctx, segX, sy + 1, curW, 3, `rgb(${oR},${oG},${oB})`);
+
+      const tR = Math.round(lerp(24, 46, b)), tG = Math.round(lerp(42, 138, b)), tB = Math.round(lerp(44, 118, b));
+      rect(ctx, segX, sy + sh - 4, curW, 3, `rgb(${tR},${tG},${tB})`);
+
+      // 底部细暖金边
+      const gR = Math.round(lerp(60, 245, b)), gG = Math.round(lerp(50, 196, b)), gB = Math.round(lerp(36, 102, b));
+      rect(ctx, segX, sy + sh - 5, curW, 1, `rgb(${gR},${gG},${gB})`);
+    }
+
+    // 招牌文字（24H 徽章 + NIGHT MART）
+    const avgB = (signState.tubes[0] + signState.tubes[1] + signState.tubes[2]) / 3;
+    // 24H 复古橙色徽章
+    const badgeR = Math.round(lerp(64, 224, signState.tubes[0]));
+    const badgeG = Math.round(lerp(42, 114, signState.tubes[0]));
+    const badgeB = Math.round(lerp(34, 58, signState.tubes[0]));
+    rect(ctx, sx + 12, sy + 6, 20, 8, `rgb(${badgeR},${badgeG},${badgeB})`);
+    const txtLight = `rgb(${Math.round(lerp(95, 255, avgB))},${Math.round(lerp(88, 250, avgB))},${Math.round(lerp(82, 232, avgB))})`;
+    drawPixelText(ctx, '24H', sx + 15, sy + 7, txtLight, 1, 1);
+
+    // 主店名文字：NIGHT MART（深青灰字，在暖黄灯箱上清晰怀旧）
+    const inkColor = `rgb(${Math.round(lerp(20, 36, avgB))},${Math.round(lerp(28, 62, avgB))},${Math.round(lerp(34, 66, avgB))})`;
+    drawPixelText(ctx, 'NIGHT MART', sx + 42, sy + 7, inkColor, 1, 2);
+
+    // 右侧小小 OPEN 暖光标
+    const openR = Math.round(lerp(45, 217, signState.tubes[2]));
+    const openG = Math.round(lerp(38, 108, signState.tubes[2]));
+    const openB = Math.round(lerp(35, 56, signState.tubes[2]));
+    drawPixelText(ctx, 'OPEN', sx + 162, sy + 7, `rgb(${openR},${openG},${openB})`, 1, 1);
+
+    // 招牌灯箱玻璃柔和竖向接缝
+    rect(ctx, sx + 66, sy, 1, sh, 'rgba(70, 56, 44, 0.22)');
+    rect(ctx, sx + 132, sy, 1, sh, 'rgba(70, 56, 44, 0.22)');
+
+    // -----------------------------------------------------------------
+    // B. 左侧伸出式竖向 24H 灯箱招牌
+    // -----------------------------------------------------------------
+    const vx = BX + 67;
+    const vy = BY + 67;
+    const sb = signState.sideTube;
+    // 铁支架
+    rect(ctx, vx + 13, vy + 5, 4, 2, '#1f2a3d');
+    rect(ctx, vx + 13, vy + 31, 4, 2, '#1f2a3d');
+    // 外框
+    rect(ctx, vx, vy, 13, 37, '#1d2638');
+    // 发光面
+    const sR = Math.round(lerp(56, 255, sb));
+    const sG = Math.round(lerp(50, 240, sb));
+    const sB = Math.round(lerp(48, 204, sb));
+    rect(ctx, vx + 1, vy + 1, 11, 35, `rgb(${sR},${sG},${sB})`);
+    // 顶部暖橙条与底部青绿条
+    rect(ctx, vx + 1, vy + 1, 11, 4, `rgb(${Math.round(lerp(52, 224, sb))},${Math.round(lerp(34, 114, sb))},${Math.round(lerp(30, 58, sb))})`);
+    rect(ctx, vx + 1, vy + 32, 11, 4, `rgb(${Math.round(lerp(24, 46, sb))},${Math.round(lerp(42, 138, sb))},${Math.round(lerp(44, 118, sb))})`);
+    // 竖排 2 / 4 / H
+    const vInk = `rgb(${Math.round(lerp(22, 38, sb))},${Math.round(lerp(28, 60, sb))},${Math.round(lerp(34, 64, sb))})`;
+    drawPixelText(ctx, '2', vx + 5, vy + 8, vInk, 1, 1);
+    drawPixelText(ctx, '4', vx + 5, vy + 15, vInk, 1, 1);
+    drawPixelText(ctx, 'H', vx + 5, vy + 22, `rgb(${Math.round(lerp(56, 216, sb))},${Math.round(lerp(34, 96, sb))},${Math.round(lerp(28, 52, sb))})`, 1, 1);
+
+    // -----------------------------------------------------------------
+    // C. 三台自动贩卖机极其柔和的灯管呼吸 + 点击微光反馈
+    // -----------------------------------------------------------------
+    for (let i = 0; i < VENDING_RECTS.length; i++) {
+      if (vendingPulse[i] > 0) {
+        vendingPulse[i] = Math.max(0, vendingPulse[i] - dt * 1.6);
+      }
+      const breath = 0.04 * Math.sin(time * 1.4 + i * 2.1) + vendingPulse[i] * 0.22;
+      if (breath > 0.005) {
+        const vr = VENDING_RECTS[i];
+        const [cr, cg, cb] = vr.color;
+        ctx.fillStyle = `rgba(${cr},${cg},${cb},${clamp(breath, 0, 0.35).toFixed(3)})`;
+        ctx.fillRect(BX + vr.x + 2, BY + vr.y + 9, vr.w - 5, 22);
+      }
+    }
+
+    // -----------------------------------------------------------------
+    // D. 蜷缩在左窗暖光下的避雨小橘猫（偶尔眨眼、轻摇尾巴）
+    // -----------------------------------------------------------------
+    catState.blinkTimer -= dt;
+    if (catState.blinkTimer <= 0) {
+      catState.blinkLeft = 0.22;
+      catState.blinkTimer = 3.2 + Math.random() * 4.5;
+    }
+    if (catState.blinkLeft > 0) catState.blinkLeft -= dt;
+    catState.tailPhase += dt * 1.8;
+
+    const cx = BX + 150;
+    const cy = BY + 168;
+    // 温暖纸板小垫子
+    rect(ctx, cx - 2, cy + 4, 13, 2, '#7d5b3a');
+    rect(ctx, cx - 1, cy + 4, 11, 1, '#9c754d');
+    // 小猫蜷缩身体
+    rect(ctx, cx, cy, 8, 4, '#d98f4a');
+    rect(ctx, cx + 1, cy - 1, 6, 2, '#e6a55e');
+    rect(ctx, cx + 1, cy + 2, 4, 2, '#f5e8d5'); // 白色小胸毛
+    // 猫头与尖耳朵
+    rect(ctx, cx + 1, cy - 4, 5, 4, '#e6a55e');
+    px(ctx, cx + 1, cy - 5, '#d98f4a');
+    px(ctx, cx + 5, cy - 5, '#d98f4a');
+    // 小眼睛（眨眼时合上）
+    if (catState.blinkLeft <= 0) {
+      px(ctx, cx + 2, cy - 2, '#241b16');
+      px(ctx, cx + 4, cy - 2, '#241b16');
+    } else {
+      rect(ctx, cx + 2, cy - 2, 1, 1, '#8c5a30');
+      rect(ctx, cx + 4, cy - 2, 1, 1, '#8c5a30');
+    }
+    // 偶尔轻轻摆动的尾巴尖
+    const tailWag = Math.sin(catState.tailPhase) > 0.72 ? 1 : 0;
+    rect(ctx, cx + 8, cy + 2 - tailWag, 2, 1, '#d98f4a');
+    px(ctx, cx + 9, cy + 1 - tailWag, '#f5e8d5');
+
+    // -----------------------------------------------------------------
+    // E. 屋檐滴落的雨珠
+    // -----------------------------------------------------------------
+    for (const d of awningDrips) {
+      if (!d.falling) {
+        d.wait -= dt;
+        if (d.wait < 0.45) {
+          // 凝聚水珠微亮
+          px(ctx, d.x, BY + 109, 'rgba(255, 232, 185, 0.65)');
+        }
+        if (d.wait <= 0) {
+          d.falling = true;
+          d.y = BY + 110;
+          d.vy = 28;
+        }
+      } else {
+        d.vy += 260 * dt;
+        d.y += d.vy * dt;
+        rect(ctx, d.x, d.y, 1, 2, 'rgba(240, 224, 195, 0.52)');
+        if (d.y >= BY + 173) {
+          d.falling = false;
+          d.wait = 1.6 + Math.random() * 4.2;
+          splashes.push({ x: d.x, y: BY + 173, life: 0.2, maxLife: 0.2 });
+        }
+      }
+    }
+  }
+
+  function renderDynamicInterior(time, dt) {
+    const ctx = dynamicInteriorOverlay.ctx;
+    ctx.clearRect(0, 0, LW, LH);
+
+    // 肉包/关东煮保温箱缓缓上升的暖白微蒸汽
+    for (const sp of steamParticles) {
+      sp.y -= sp.vy * dt;
+      sp.life += dt * 0.45;
+      if (sp.life >= 1) {
+        sp.life = 0;
+        sp.y = BY + 137;
+        sp.x = BX + 127 + Math.random() * 12;
+      }
+      const sx = sp.x + Math.sin(time * 2.2 + sp.phase) * 1.4;
+      const a = Math.sin(sp.life * Math.PI) * 0.42;
+      ctx.fillStyle = `rgba(255, 250, 236, ${a.toFixed(3)})`;
+      ctx.fillRect(Math.round(sx), Math.round(sp.y), 1, 1);
+    }
+
+    // 柜台后安静值夜班的店员剪影（极轻微呼吸起伏）
+    const clerkX = BX + 114;
+    const clerkY = BY + 131 + (Math.sin(time * 1.1) > 0.6 ? 1 : 0);
+    // 头部与柔和灯光勾边
+    rect(ctx, clerkX, clerkY, 5, 5, '#47362b');
+    rect(ctx, clerkX + 1, clerkY, 3, 1, '#6e523d');
+    // 肩膀与便利店条纹围裙/制服
+    rect(ctx, clerkX - 2, clerkY + 5, 9, 6, '#3b635a');
+    rect(ctx, clerkX - 1, clerkY + 5, 7, 1, '#e6b873');
+  }
+
+  function renderDynamicRoadReflections(time, dt) {
+    const ctx = dynamicRoadOverlay.ctx;
+    ctx.clearRect(0, 0, LW, LH);
+
+    const roadTop = BY + 189;
+    const avgSignB = (signState.tubes[0] + signState.tubes[1] + signState.tubes[2]) / 3;
+
+    // 湿润柏油马路上的动态水光倒影（随微风和雨纹轻轻横向晃动）
+    function drawWetReflection(x0, w, maxH, r, g, b, baseAlpha, shimmerSpeed = 2.4) {
+      for (let dy = 0; dy < maxH; dy += 2) {
+        const t = dy / maxH;
+        const fade = (1 - t) * (1 - t);
+        const wave = Math.sin(time * shimmerSpeed + dy * 0.55 + x0 * 0.08) * (1.2 + t * 2.2);
+        const spread = Math.floor(t * 4);
+        const alpha = baseAlpha * fade * (0.78 + 0.22 * Math.sin(time * 3.1 + dy * 0.9));
+        if (alpha < 0.008) continue;
+        ctx.fillStyle = `rgba(${r},${g},${b},${alpha.toFixed(3)})`;
+        ctx.fillRect(Math.round(x0 + wave - spread * 0.5), roadTop + dy, Math.round(w + spread), 1);
+      }
+    }
+
+    // 1. 左侧街角暖路灯倒影
+    drawWetReflection(BX + 44, 18, 42, 255, 206, 124, 0.24, 2.0);
+    drawWetReflection(BX + 49, 7, 26, 255, 238, 188, 0.28, 2.5);
+
+    // 2. 便利店大橱窗的温暖黄色倒影
+    drawWetReflection(BX + 92, 74, 52, 255, 208, 128, 0.26, 2.1);
+    drawWetReflection(BX + 174, 38, 56, 255, 224, 152, 0.30, 2.3);
+    drawWetReflection(BX + 218, 52, 48, 255, 204, 122, 0.25, 2.0);
+
+    // 3. 招牌灯箱倒影（与招牌闪烁完全同步！）
+    drawWetReflection(BX + 84, 194, 24, 255, 228, 168, 0.16 * avgSignB, 2.8);
+    drawWetReflection(BX + 84, 194, 10, 232, 126, 68, 0.12 * avgSignB, 2.6);
+    drawWetReflection(BX + 66, 12, 32, 255, 224, 158, 0.18 * signState.sideTube, 2.4);
+
+    // 4. 三台自动贩卖机各自色彩鲜明的柔和倒影！
+    const vm1Boost = 1 + vendingPulse[0] * 0.45;
+    const vm2Boost = 1 + vendingPulse[1] * 0.45;
+    const vm3Boost = 1 + vendingPulse[2] * 0.45;
+    drawWetReflection(BX + 287, 23, 46, 140, 228, 255, 0.28 * vm1Boost, 2.4);
+    drawWetReflection(BX + 315, 23, 44, 255, 208, 140, 0.27 * vm2Boost, 2.2);
+    drawWetReflection(BX + 343, 20, 40, 152, 238, 208, 0.24 * vm3Boost, 2.5);
+
+    // 5. 远处巷口暖路灯微弱倒影
+    drawWetReflection(BX + 374, 10, 22, 255, 204, 128, 0.14, 1.9);
+
+    // 6. 湿润路面上轻柔荡开的像素雨滴涟漪
+    for (const rp of ripples) {
+      rp.r += rp.speed * dt;
+      if (rp.r >= rp.maxR) {
+        rp.r = 0.5;
+        rp.x = BX + 12 + Math.random() * (VIEW_W - 24);
+        rp.y = BY + 190 + Math.random() * 52;
+        rp.maxR = 4 + Math.random() * 5.5;
+      }
+      const life = 1 - rp.r / rp.maxR;
+      const rx = Math.round(rp.x);
+      const ry = Math.round(rp.y);
+      const radX = Math.round(rp.r * 1.8);
+      const radY = Math.max(1, Math.round(rp.r * 0.45));
+
+      // 根据涟漪所处位置染上淡淡的环境暖光或贩卖机柔光
+      let rc = `rgba(175, 198, 228, ${(life * 0.28).toFixed(3)})`;
+      if (rx >= BX + 82 && rx <= BX + 278) {
+        rc = `rgba(255, 226, 168, ${(life * 0.34).toFixed(3)})`;
+      } else if (rx >= BX + 284 && rx <= BX + 314) {
+        rc = `rgba(175, 238, 255, ${(life * 0.36).toFixed(3)})`;
+      } else if (rx >= BX + 314 && rx <= BX + 342) {
+        rc = `rgba(255, 220, 164, ${(life * 0.34).toFixed(3)})`;
+      } else if (rx >= BX + 342 && rx <= BX + 368) {
+        rc = `rgba(178, 244, 218, ${(life * 0.32).toFixed(3)})`;
+      }
+
+      ctx.fillStyle = rc;
+      // 绘制极简像素扁椭圆环
+      const steps = Math.max(8, radX * 3);
+      for (let i = 0; i < steps; i++) {
+        const ang = (i / steps) * Math.PI * 2;
+        const pxX = Math.round(rx + Math.cos(ang) * radX);
+        const pxY = Math.round(ry + Math.sin(ang) * radY);
+        ctx.fillRect(pxX, pxY, 1, 1);
+      }
+    }
+  }
+
+  function renderPixelRain(dt) {
+    // 远景轻细雨
+    const fctx = rainLayerFar.ctx;
+    fctx.clearRect(0, 0, LW, LH);
+    const windFar = -0.13;
+
+    for (const r of farRain) {
+      r.y += r.speed * dt;
+      r.x += r.speed * windFar * dt;
+      if (r.y > LH) {
+        r.y = -r.len - Math.random() * 20;
+        r.x = Math.random() * (LW + 40);
+      }
+      if (r.x < -10) r.x += LW + 20;
+      fctx.fillStyle = `rgba(165, 190, 224, ${r.alpha.toFixed(3)})`;
+      const x0 = Math.round(r.x);
+      const y0 = Math.round(r.y);
+      const steps = Math.round(r.len);
+      for (let k = 0; k < steps; k++) {
+        fctx.fillRect(Math.round(x0 + k * windFar), y0 + k, 1, 1);
+      }
+    }
+
+    // 近景细雨（经过便利店灯光与贩卖机时会映出暖黄和柔和冰蓝！）
+    const nctx = rainLayerNear.ctx;
+    nctx.clearRect(0, 0, LW, LH);
+    const windNear = -0.15;
+
+    for (const r of nearRain) {
+      r.y += r.speed * dt;
+      r.x += r.speed * windNear * dt;
+
+      // 碰到屋檐或地面产生极微小水花
+      let hitSurface = false;
+      if (r.y > BY + 84 && r.y < BY + 90 && r.x > BX + 80 && r.x < BX + 282 && Math.random() < 0.08) {
+        splashes.push({ x: r.x, y: BY + 85, life: 0.16, maxLife: 0.16 });
+        hitSurface = true;
+      } else if (r.y > BY + 114 && r.y < BY + 120 && r.x > BX + 282 && r.x < BX + 368 && Math.random() < 0.12) {
+        splashes.push({ x: r.x, y: BY + 115, life: 0.16, maxLife: 0.16 });
+        hitSurface = true;
+      } else if (r.y > BY + 186 + Math.random() * 68) {
+        if (Math.random() < 0.25) {
+          splashes.push({ x: r.x, y: Math.min(LH - 4, r.y), life: 0.18, maxLife: 0.18 });
+        }
+        hitSurface = true;
+      }
+
+      if (hitSurface || r.y > LH + 8) {
+        r.y = -r.len - Math.random() * 28;
+        r.x = Math.random() * (LW + 50);
+      }
+      if (r.x < -12) r.x += LW + 24;
+
+      // 按雨丝所处的光照区域着色
+      let col = `rgba(176, 200, 232, ${r.alpha.toFixed(3)})`;
+      if (r.y > BY + 80 && r.y < BY + 195 && r.x > BX + 76 && r.x < BX + 286) {
+        col = `rgba(255, 232, 184, ${(r.alpha * 1.25).toFixed(3)})`;
+      } else if (r.y > BY + 112 && r.y < BY + 192 && r.x >= BX + 286 && r.x < BX + 314) {
+        col = `rgba(178, 240, 255, ${(r.alpha * 1.22).toFixed(3)})`;
+      } else if (r.y > BY + 112 && r.y < BY + 192 && r.x >= BX + 314 && r.x < BX + 342) {
+        col = `rgba(255, 224, 168, ${(r.alpha * 1.2).toFixed(3)})`;
+      } else if (r.y > BY + 112 && r.y < BY + 192 && r.x >= BX + 342 && r.x < BX + 368) {
+        col = `rgba(182, 245, 220, ${(r.alpha * 1.18).toFixed(3)})`;
+      } else if (r.y > BY + 56 && r.y < BY + 175 && r.x > BX + 36 && r.x < BX + 74) {
+        col = `rgba(255, 222, 158, ${(r.alpha * 1.15).toFixed(3)})`;
+      }
+
+      nctx.fillStyle = col;
+      const x0 = Math.round(r.x);
+      const y0 = Math.round(r.y);
+      const steps = Math.round(r.len);
+      for (let k = 0; k < steps; k++) {
+        nctx.fillRect(Math.round(x0 + k * windNear), y0 + k, 1, 1);
+      }
+    }
+
+    // 绘制雨滴微小溅起水花
+    for (let i = splashes.length - 1; i >= 0; i--) {
+      const sp = splashes[i];
+      sp.life -= dt;
+      if (sp.life <= 0) {
+        splashes.splice(i, 1);
+        continue;
+      }
+      const t = 1 - sp.life / sp.maxLife;
+      const spread = 1 + t * 2.2;
+      const lift = Math.sin(t * Math.PI) * 2.2;
+      nctx.fillStyle = `rgba(218, 232, 246, ${((1 - t) * 0.45).toFixed(3)})`;
+      nctx.fillRect(Math.round(sp.x - spread), Math.round(sp.y - lift), 1, 1);
+      nctx.fillRect(Math.round(sp.x + spread), Math.round(sp.y - lift), 1, 1);
+    }
+  }
+
+  // =========================================================================
+  // 8. 氛围柔光层（暖黄光晕 + 贩卖机柔光 + 轻微怀旧暗角）
+  // =========================================================================
+  function drawAmbientBloom(storeOffX, storeOffY, time) {
+    sctx.save();
+    sctx.globalCompositeOperation = 'screen';
+
+    function glow(vx, vy, vr, r, g, b, alpha) {
+      const sx = originX + (vx + storeOffX) * pixelScale;
+      const sy = originY + (vy + storeOffY) * pixelScale;
+      const sr = vr * pixelScale;
+      const grad = sctx.createRadialGradient(sx, sy, 0, sx, sy, sr);
+      grad.addColorStop(0, `rgba(${r},${g},${b},${alpha.toFixed(3)})`);
+      grad.addColorStop(0.42, `rgba(${r},${g},${b},${(alpha * 0.42).toFixed(3)})`);
+      grad.addColorStop(1, `rgba(${r},${g},${b},0)`);
+      sctx.fillStyle = grad;
+      sctx.fillRect(sx - sr, sy - sr, sr * 2, sr * 2);
+    }
+
+    const avgB = (signState.tubes[0] + signState.tubes[1] + signState.tubes[2]) / 3;
+    const warmBreath = 0.96 + 0.04 * Math.sin(time * 0.9);
+
+    // 便利店暖黄橱窗大范围柔和光晕
+    glow(145, 136, 92, 255, 198, 108, 0.25 * warmBreath);
+    glow(228, 138, 86, 255, 192, 102, 0.22 * warmBreath);
+    // 招牌灯箱暖晕（随招牌闪烁实时联动！）
+    glow(180, 96, 105, 255, 214, 140, 0.19 * avgB);
+    glow(74, 86, 36, 255, 214, 144, 0.20 * signState.sideTube);
+    // 左侧街角路灯暖黄雨雾光晕
+    glow(52, 62, 54, 255, 194, 104, 0.24 * warmBreath);
+    // 左侧街角远处红灯微光
+    glow(396, 116, 18, 224, 78, 72, 0.13);
+    // 巷口远处路灯暖晕
+    glow(378, 99, 28, 255, 198, 114, 0.16);
+
+    // 三台自动贩卖机的柔光晕
+    const v0 = 0.24 + vendingPulse[0] * 0.14 + 0.015 * Math.sin(time * 1.5);
+    const v1 = 0.22 + vendingPulse[1] * 0.14 + 0.015 * Math.sin(time * 1.3 + 2);
+    const v2 = 0.19 + vendingPulse[2] * 0.14 + 0.015 * Math.sin(time * 1.7 + 4);
+    glow(298, 146, 46, 126, 224, 255, v0);
+    glow(326, 148, 44, 255, 202, 130, v1);
+    glow(353, 150, 38, 142, 236, 200, v2);
+
+    // 极轻的远景红色航空警示灯微闪烁
+    const farOffX = -pointer.x * PARALLAX.farCity.x;
+    const farOffY = -pointer.y * PARALLAX.farCity.y;
+    for (const b of redBeacons) {
+      const pulse = 0.35 + 0.65 * Math.pow(0.5 + 0.5 * Math.sin(time * 1.6 + b.phase), 2);
+      const bx = originX + (b.x - BX + farOffX) * pixelScale;
+      const by = originY + (b.y - BY + farOffY) * pixelScale;
+      const br = 6 * pixelScale;
+      const grad = sctx.createRadialGradient(bx, by, 0, bx, by, br);
+      grad.addColorStop(0, `rgba(255, 76, 76, ${(0.55 * pulse).toFixed(3)})`);
+      grad.addColorStop(1, 'rgba(255, 76, 76, 0)');
+      sctx.fillStyle = grad;
+      sctx.fillRect(bx - br, by - br, br * 2, br * 2);
+    }
+
+    sctx.restore();
+
+    // 柔和怀旧暗角（Vignette）让视觉自然收拢在温暖的街角中心
+    const cx = winW * 0.5;
+    const cy = winH * 0.52;
+    const maxR = Math.hypot(winW * 0.6, winH * 0.6);
+    const vig = sctx.createRadialGradient(cx, cy, maxR * 0.36, cx, cy, maxR);
+    vig.addColorStop(0, 'rgba(0, 0, 0, 0)');
+    vig.addColorStop(0.75, 'rgba(4, 7, 15, 0.24)');
+    vig.addColorStop(1, 'rgba(3, 5, 12, 0.58)');
+    sctx.fillStyle = vig;
+    sctx.fillRect(0, 0, winW, winH);
+  }
+
+  // =========================================================================
+  // 9. 屏幕玻璃雨滴滑落模拟（高分独立层，带表面张力停顿、轻度蜿蜒、水痕、环境折射色）
+  // =========================================================================
+  const glassDrops = [];
+  const staticMistDrops = [];
+  const trails = [];
+
+  function initGlassRain() {
+    staticMistDrops.length = 0;
+    glassDrops.length = 0;
+    trails.length = 0;
+
+    // 边缘极细腻的静止小水珠（保持画面中心通透清晰）
+    for (let i = 0; i < 65; i++) {
+      let nx = Math.random();
+      let ny = Math.random();
+      // 让静止微水珠更偏向上方和左右两侧边缘
+      const dx = nx - 0.5;
+      const dy = ny - 0.52;
+      if (dx * dx + dy * dy < 0.14 && Math.random() < 0.78) {
+        nx = Math.random() < 0.5 ? Math.random() * 0.24 : 0.76 + Math.random() * 0.24;
+      }
+      staticMistDrops.push({
+        nx,
+        ny,
+        r: 0.9 + Math.random() * 1.9,
+        alpha: 0.16 + Math.random() * 0.24
+      });
+    }
+
+    // 顺着屏幕缓慢滑落的真实感水滴
+    for (let i = 0; i < 28; i++) {
+      glassDrops.push(spawnSlidingDrop(true));
+    }
+  }
+
+  function spawnSlidingDrop(randomY = false) {
+    // 稍微避开正中央高密度堆叠，但允许优雅掠过整个屏幕
+    const nx = 0.03 + Math.random() * 0.94;
+    const ny = randomY ? Math.random() * 0.95 : -0.04 - Math.random() * 0.12;
+    const r = 2.2 + Math.random() * 3.1;
+    return {
+      nx,
+      ny,
+      r,
+      vy: 0,
+      maxVy: 0.028 + Math.random() * 0.058,
+      pauseTimer: Math.random() * 2.2,
+      sliding: Math.random() > 0.3,
+      wobblePhase: Math.random() * Math.PI * 2,
+      wobbleFreq: 1.5 + Math.random() * 2.2,
+      trailAccum: 0
+    };
+  }
+
+  // 根据雨滴所在屏幕水平位置，给出背后的柔和环境折射色
+  function getSceneTintAt(nx, ny) {
+    if (ny > 0.32 && ny < 0.86) {
+      if (nx > 0.18 && nx < 0.67) {
+        return { r: 255, g: 224, b: 162 }; // 便利店暖黄光
+      }
+      if (nx >= 0.67 && nx < 0.76) {
+        return { r: 168, g: 234, b: 255 }; // 冰蓝贩卖机
+      }
+      if (nx >= 0.76 && nx < 0.83) {
+        return { r: 255, g: 214, b: 152 }; // 暖色咖啡贩卖机
+      }
+      if (nx >= 0.83 && nx < 0.91) {
+        return { r: 176, g: 242, b: 218 }; // 薄荷色贩卖机
+      }
+    }
+    return { r: 170, g: 196, b: 230 }; // 深夜雨空微蓝
+  }
+
+  function drawGlassDroplet(ctx, x, y, r, stretch, tint, alphaScale = 1) {
+    const ry = r * stretch;
+    ctx.save();
+    ctx.translate(x, y);
+
+    // 极淡的雨滴底部阴影，增强附着玻璃的立体感
+    ctx.beginPath();
+    ctx.ellipse(0, ry * 0.25, r * 1.05, ry * 1.05, 0, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(3, 6, 14, ${(0.24 * alphaScale).toFixed(3)})`;
+    ctx.fill();
+
+    // 雨滴主体（内透背后微光）
+    const grad = ctx.createRadialGradient(-r * 0.25, -ry * 0.25, r * 0.1, 0, ry * 0.15, Math.max(r, ry) * 1.1);
+    grad.addColorStop(0, `rgba(255, 255, 255, ${(0.18 * alphaScale).toFixed(3)})`);
+    grad.addColorStop(0.55, `rgba(${tint.r}, ${tint.g}, ${tint.b}, ${(0.11 * alphaScale).toFixed(3)})`);
+    grad.addColorStop(0.88, `rgba(${tint.r}, ${tint.g}, ${tint.b}, ${(0.34 * alphaScale).toFixed(3)})`);
+    grad.addColorStop(1, `rgba(255, 255, 255, ${(0.12 * alphaScale).toFixed(3)})`);
+
+    ctx.beginPath();
+    ctx.ellipse(0, 0, r, ry, 0, 0, Math.PI * 2);
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    // 底部明亮折射新月光
+    ctx.beginPath();
+    ctx.arc(0, ry * 0.36, r * 0.58, 0.16 * Math.PI, 0.84 * Math.PI);
+    ctx.strokeStyle = `rgba(${tint.r}, ${tint.g}, ${tint.b}, ${(0.66 * alphaScale).toFixed(3)})`;
+    ctx.lineWidth = Math.max(0.85, r * 0.28);
+    ctx.stroke();
+
+    // 左上角微小高光点
+    ctx.beginPath();
+    ctx.arc(-r * 0.32, -ry * 0.32, Math.max(0.65, r * 0.25), 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(255, 255, 255, ${(0.68 * alphaScale).toFixed(3)})`;
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  function updateAndRenderGlassRain(dt) {
+    gctx.clearRect(0, 0, winW, winH);
+
+    // 屏幕雨滴层带有最靠近观察者的轻度视差，立体感极强
+    const glassShiftX = -pointer.x * 16;
+    const glassShiftY = -pointer.y * 9;
+
+    // 1. 绘制微弱水痕（随时间自然蒸发消散）
+    for (let i = trails.length - 1; i >= 0; i--) {
+      const tr = trails[i];
+      tr.life -= dt * 0.11;
+      if (tr.life <= 0) {
+        trails.splice(i, 1);
+        continue;
+      }
+      const x = tr.nx * winW + glassShiftX;
+      const y = tr.ny * winH + glassShiftY;
+      gctx.beginPath();
+      gctx.arc(x, y, tr.r, 0, Math.PI * 2);
+      gctx.fillStyle = `rgba(${tr.tint.r}, ${tr.tint.g}, ${tr.tint.b}, ${(tr.life * 0.22).toFixed(3)})`;
+      gctx.fill();
+    }
+
+    // 2. 绘制边缘静止细水雾滴
+    for (const md of staticMistDrops) {
+      const x = md.nx * winW + glassShiftX;
+      const y = md.ny * winH + glassShiftY;
+      const tint = getSceneTintAt(md.nx, md.ny);
+      drawGlassDroplet(gctx, x, y, md.r, 1.05, tint, md.alpha * 1.7);
+    }
+
+    // 3. 更新并绘制顺着屏幕滑落的雨滴
+    for (let i = 0; i < glassDrops.length; i++) {
+      const d = glassDrops[i];
+      if (!d.sliding) {
+        d.pauseTimer -= dt;
+        // 停顿时缓慢吸收细雨而略微变大，直到重力打破表面张力
+        d.r = Math.min(5.2, d.r + dt * 0.06);
+        d.vy = Math.max(0, d.vy - dt * 0.08);
+        if (d.pauseTimer <= 0) {
+          d.sliding = true;
+          d.pauseTimer = 1.2 + Math.random() * 2.8;
+        }
+      } else {
+        // 柔和加速并带有一点阻力和微小左右蜿蜒
+        const targetVy = d.maxVy * (0.65 + (d.r / 4.5) * 0.65);
+        d.vy = lerp(d.vy, targetVy, Math.min(1, dt * 3.2));
+        d.ny += d.vy * dt;
+        d.wobblePhase += dt * d.wobbleFreq;
+        d.nx += Math.sin(d.wobblePhase) * 0.00018 * (1 + d.vy * 14);
+
+        // 偶尔因为玻璃表面阻力短暂停顿一下，非常真实
+        d.pauseTimer -= dt;
+        if (d.pauseTimer <= 0) {
+          if (Math.random() < 0.48) {
+            d.sliding = false;
+            d.pauseTimer = 0.6 + Math.random() * 2.6;
+          } else {
+            d.pauseTimer = 1.0 + Math.random() * 2.0;
+          }
+        }
+
+        // 留下细微闪烁水痕
+        d.trailAccum += d.vy * winH * dt;
+        if (d.trailAccum > d.r * 2.8 && trails.length < 220) {
+          d.trailAccum = 0;
+          trails.push({
+            nx: d.nx,
+            ny: d.ny - (d.r * 0.8) / Math.max(1, winH),
+            r: Math.max(0.7, d.r * 0.28),
+            life: 0.75 + Math.random() * 0.25,
+            tint: getSceneTintAt(d.nx, d.ny)
+          });
+        }
+      }
+
+      // 滑出屏幕底部后重新从顶部生成
+      if (d.ny > 1.06) {
+        glassDrops[i] = spawnSlidingDrop(false);
+        continue;
+      }
+
+      const x = d.nx * winW + glassShiftX;
+      const y = d.ny * winH + glassShiftY;
+      const tint = getSceneTintAt(d.nx, d.ny);
+      const stretch = 1.08 + clamp(d.vy * 4.5, 0, 0.42);
+      drawGlassDroplet(gctx, x, y, d.r, stretch, tint, 0.92);
+    }
+  }
+
+  initGlassRain();
+
+  // =========================================================================
+  // 10. 主循环：丝滑 60fps 渲染
+  // =========================================================================
+  function drawPixelLayer(layerCanvas, parallaxCfg) {
+    const offX = -pointer.x * parallaxCfg.x;
+    const offY = -pointer.y * parallaxCfg.y;
+    const dx = originX + (offX - BX) * pixelScale;
+    const dy = originY + (offY - BY) * pixelScale;
+    const dw = LW * pixelScale;
+    const dh = LH * pixelScale;
+    sctx.drawImage(layerCanvas, dx, dy, dw, dh);
+  }
+
+  let lastTime = performance.now();
+
+  function frame(now) {
+    const dt = Math.min((now - lastTime) / 1000, 0.05);
+    lastTime = now;
+    const time = now / 1000;
+
+    // 鼠标静止一段时间后，加入极微弱的自动轻呼吸漂移，放空时画面也有微生命感
+    pointer.idleTime += dt;
+    let aimX = pointer.targetX;
+    let aimY = pointer.targetY;
+    if (!pointer.active || pointer.idleTime > 3.5) {
+      const blend = clamp((pointer.idleTime - 3.5) / 4.0, 0, 1);
+      const driftX = Math.sin(time * 0.22) * 0.18;
+      const driftY = Math.cos(time * 0.17) * 0.12;
+      aimX = lerp(aimX, driftX, pointer.active ? blend : 1);
+      aimY = lerp(aimY, driftY, pointer.active ? blend : 1);
+    }
+
+    // 丝滑指数阻尼（轻柔不生硬）
+    const smooth = 1 - Math.exp(-dt * 4.2);
+    pointer.x += (aimX - pointer.x) * smooth;
+    pointer.y += (aimY - pointer.y) * smooth;
+
+    // 更新状态与动态像素层
+    updateSignFlicker(dt);
+    renderDynamicInterior(time, dt);
+    renderDynamicStore(time, dt);
+    renderDynamicRoadReflections(time, dt);
+    renderPixelRain(dt);
+
+    // 合成所有像素图层（保持像素锐利，同时层间位移丝滑！）
+    sctx.imageSmoothingEnabled = false;
+    sctx.fillStyle = '#060913';
+    sctx.fillRect(0, 0, winW, winH);
+
+    // 1. 深夜雨空
+    drawPixelLayer(layerSky.canvas, PARALLAX.sky);
+    // 2. 远景城市天际线
+    drawPixelLayer(layerFarCity.canvas, PARALLAX.farCity);
+    // 3. 远景细雨
+    drawPixelLayer(rainLayerFar.canvas, PARALLAX.mid);
+    // 4. 中景街角暗楼与电线杆
+    drawPixelLayer(layerMidStreet.canvas, PARALLAX.mid);
+    // 5. 便利店暖黄室内（透过外墙橱窗显露，带窗口景深！）
+    drawPixelLayer(layerInterior.canvas, PARALLAX.interior);
+    drawPixelLayer(dynamicInteriorOverlay.canvas, PARALLAX.interior);
+    // 6. 便利店外立面 + 招牌灯 + 门口三台自动贩卖机 + 避雨小猫
+    drawPixelLayer(layerStore.canvas, PARALLAX.store);
+    drawPixelLayer(dynamicStoreLayer.canvas, PARALLAX.store);
+    // 7. 湿润人行道 + 深夜柏油马路 + 同步水光倒影与涟漪
+    drawPixelLayer(layerRoad.canvas, PARALLAX.road);
+    drawPixelLayer(dynamicRoadOverlay.canvas, PARALLAX.road);
+    // 8. 近景细雨与溅起微水花
+    drawPixelLayer(rainLayerNear.canvas, PARALLAX.road);
+    // 9. 边缘暗影前景
+    drawPixelLayer(layerForeground.canvas, PARALLAX.fg);
+
+    // 10. 温暖雨夜光晕与怀旧暗角
+    const storeOffX = -pointer.x * PARALLAX.store.x;
+    const storeOffY = -pointer.y * PARALLAX.store.y;
+    drawAmbientBloom(storeOffX, storeOffY, time);
+
+    // 11. 屏幕玻璃滑落雨滴层
+    updateAndRenderGlassRain(dt);
+
+    requestAnimationFrame(frame);
+  }
+
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

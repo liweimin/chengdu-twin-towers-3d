@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#101823">
+  <meta name="description" content="雨夜，街角亮着灯。陪你在便利店门口发一会儿呆。">
+  <title>雨停之前</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="scene.css">
+  <script src="scene.js" defer></script>
+</head>
+<body>
+  <main class="scene" aria-label="雨停之前">
+    <div class="scene-art">
+      <picture>
+        <source media="(max-aspect-ratio: 14/11)" srcset="night-mart-portrait.png">
+        <img src="night-mart.png" alt="深夜的细雨中，一家像素风便利店透出暖黄灯光，门旁三台贩卖机的光映在湿漉漉的街面。" fetchpriority="high" draggable="false">
+      </picture>
+      <button class="sign" type="button" aria-label="轻碰便利店招牌" aria-describedby="rain-help">
+        <span class="sign-face" aria-hidden="true"></span>
+      </button>
+    </div>
+    <canvas class="weather" aria-hidden="true"></canvas>
+    <div class="vignette" aria-hidden="true"></div>
+    <p id="rain-help" class="sr-only">轻点招牌会微微闪光。点画面空处或按 M 键可以开关雨声。</p>
+  </main>
+</body>
+</html>
