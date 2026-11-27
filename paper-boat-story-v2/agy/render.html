@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>纸船的故事 - 水彩关键帧渲染</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 1600px;
+      height: 900px;
+      overflow: hidden;
+      background: #FAF5E8;
+    }
+    canvas {
+      display: block;
+      width: 1600px;
+      height: 900px;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="stage" width="1600" height="900"></canvas>
+  <script type="module">
+    import { SCENES } from './scenes_v2.js';
+    const params = new URLSearchParams(window.location.search);
+    const name = params.get('scene') || 'kf3_nudge';
+    const fn = SCENES[name] || SCENES.kf3_nudge;
+    const canvas = document.getElementById('stage');
+    fn(canvas);
+    document.body.dataset.rendered = name;
+  </script>
+</body>
+</html>

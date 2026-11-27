@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>纸船的故事 - 动画批渲染</title>
+  <style>
+    * { margin: 0; padding: 0; }
+    body { background: #FCF9F1; overflow: hidden; }
+    canvas { display: block; width: 1600px; height: 900px; }
+  </style>
+</head>
+<body>
+  <canvas id="stage" width="1600" height="900"></canvas>
+  <script type="module">
+    import { PaperBoatFilm } from './animate_scenes.js';
+
+    const params = new URLSearchParams(window.location.search);
+    const fps = parseInt(params.get('fps') || '24', 10);
+    const duration = parseFloat(params.get('duration') || '30');
+    const totalFrames = Math.round(fps * duration);
+
+    const canvas = document.getElementById('stage');
+    const film = new PaperBoatFilm(1600, 900);
+
+    async function runBatch() {
+      for (let i = 0; i < totalFrames; i++) {
+        const t = i / fps;
+        film.renderFrame(canvas, t);
+        const blob = await new Promise((res) => canvas.toBlob(res, 'image/jpeg', 0.96));
+        const resp = await fetch(`/frame?i=${i}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'image/jpeg' },
+          body: blob,
+        });
+        if (!resp.ok) throw new Error(`Frame ${i} upload failed`);
+      }
+      await fetch('/done', { method: 'POST' });
+      document.title = 'DONE';
+    }
+
+    runBatch().catch((err) => {
+      fetch('/error', { method: 'POST', body: String(err) });
+      console.error(err);
+    });
+  </script>
+</body>
+</html>

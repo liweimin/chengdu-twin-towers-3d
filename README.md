@@ -2,6 +2,14 @@
 
 用实际作品比较 Codex 和 AGY 的二维绘画、三维渲染和视频动效。每轮实验保留源码、复现说明和原始输出。
 
+## 2026 年 11 月 27 日 · 《纸船的故事》v2（水彩绘本分步迭代）
+
+![《纸船的故事》v2 关键帧对照（上：Codex，下：AGY）](paper-boat-story-v2/previews/frame-comparison.jpg)
+
+同一份水彩绘本导演策划提示词，采用“先定导演方案 → 多轮打磨静态关键帧 → 渲染 30 秒成片与配乐 → 交付离线单文件 HTML”的分步协作流程。收录两套 MP4、离线 HTML、源码、关键帧对照及完整的人与 Agent 协作过程总结。
+
+[两套短片、协作过程与源码](paper-boat-story-v2/README.md) · [Codex 成片](paper-boat-story-v2/codex/film/The-Paper-Boat.mp4) · [AGY 成片](paper-boat-story-v2/agy/paper_boat_story.mp4)
+
 ## 2026 年 11 月 26 日 · 《蚀影》光剑对决
 
 Codex 用 Python 逐帧绘制的 15 秒短片。火柴人版和日漫版共用对决编排及原创配乐。日漫版重绘角色，加入分屏特写与漫画冲击帧。
